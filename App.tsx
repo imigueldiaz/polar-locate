@@ -62,6 +62,7 @@ export default function App() {
     saveFrames: prefs.saveJpegs,
     pxPerDeg: prefs.pxPerDeg,
     tolDeg: prefs.tolDeg,
+    calibFrames: prefs.calibFrames,
   });
 
   useEffect(() => {
@@ -195,6 +196,9 @@ export default function App() {
 
   const guideText = useMemo(() => {
     if (!searching) return t('search.hint');
+    if (starTrack.calibrating) {
+      return `${t('search.calibrating')} (${starTrack.calibDone}/${starTrack.calibTotal})`;
+    }
     if (!fix) return t('guide.noSensor');
     if (fix.locked) return t('guide.aligned');
     const tol = fix.cv ? 0.05 : TOL_DEG;
@@ -205,7 +209,7 @@ export default function App() {
     }
     const mag = fix.cv ? `${Math.round(fix.mag * 100)}%` : formatAngle(fix.mag, 1);
     return parts.length ? `${parts.join(' · ')}  ${mag}` : mag;
-  }, [fix, searching]);
+  }, [fix, searching, starTrack.calibrating, starTrack.calibDone, starTrack.calibTotal]);
 
   const starScreen = starTrack.found
     ? { x: starTrack.dx * RETICLE_R, y: starTrack.dy * RETICLE_R }
@@ -215,7 +219,7 @@ export default function App() {
   fixRef.current = fix;
 
   useEffect(() => {
-    if (!searching) return;
+    if (!searching || starTrack.calibrating) return;
     const id = setInterval(() => {
       const f = fixRef.current;
       if (!f || f.locked) return;
@@ -233,7 +237,7 @@ export default function App() {
       })();
     }, 1000);
     return () => clearInterval(id);
-  }, [searching]);
+  }, [searching, starTrack.calibrating]);
 
   const shareTraces = useCallback(async () => {
     try {

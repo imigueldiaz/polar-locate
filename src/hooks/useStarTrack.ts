@@ -16,6 +16,7 @@ const TOL = 0.05;
 const DEFAULT_TOL_DEG = 0.5;
 const MAX_BLOBS = 8;
 const STACK = 3; // frames averaged per tick (multi-frame stacking → better S/N)
+const DEFAULT_CALIB = 10; // frames averaged for the initial calibration burst
 const CAPTURE_QUALITY = 0.8; // was 0.4; hard JPEG compression erased faint stars
 
 export type DetPx = { x: number; y: number };
@@ -28,6 +29,9 @@ export type StarTrack = {
   brightness: number;
   locked: boolean;
   focus: number;
+  calibrating: boolean;
+  calibDone: number;
+  calibTotal: number;
   blobs: DetPx[];
   platePxPerDeg: number | null;
   error: string | null;
@@ -41,6 +45,9 @@ const IDLE: StarTrack = {
   brightness: 0,
   locked: false,
   focus: 0,
+  calibrating: false,
+  calibDone: 0,
+  calibTotal: 0,
   blobs: [],
   platePxPerDeg: null,
   error: null,
@@ -58,7 +65,7 @@ function focal35FromExif(exif: unknown): number | null {
 export function useStarTrack(
   cameraRef: RefObject<CameraView | null>,
   enabled: boolean,
-  options: { saveFrames?: boolean; pxPerDeg?: number; tolDeg?: number } = {},
+  options: { saveFrames?: boolean; pxPerDeg?: number; tolDeg?: number; calibFrames?: number } = {},
 ): StarTrack {
   const [state, setState] = useState<StarTrack>(IDLE);
   const inFlight = useRef(false);
@@ -66,12 +73,14 @@ export function useStarTrack(
   const saveRef = useRef(false);
   const pxRef = useRef(0);
   const tolRef = useRef(DEFAULT_TOL_DEG);
+  const calibRef = useRef(DEFAULT_CALIB);
 
   useEffect(() => {
     saveRef.current = !!options.saveFrames;
     pxRef.current = options.pxPerDeg ?? 0;
     tolRef.current = options.tolDeg && options.tolDeg > 0 ? options.tolDeg : DEFAULT_TOL_DEG;
-  }, [options.saveFrames, options.pxPerDeg, options.tolDeg]);
+    calibRef.current = options.calibFrames && options.calibFrames > 0 ? options.calibFrames : DEFAULT_CALIB;
+  }, [options.saveFrames, options.pxPerDeg, options.tolDeg, options.calibFrames]);
 
   useEffect(() => {
     if (!enabled) {
@@ -79,18 +88,23 @@ export function useStarTrack(
       return;
     }
     let cancelled = false;
+    let firstRun = true;
 
     const tick = async () => {
       if (inFlight.current) return;
       const cam = cameraRef.current;
       if (!cam) return;
       inFlight.current = true;
+      const burst = firstRun ? Math.max(1, Math.round(calibRef.current)) : STACK;
       try {
+        if (firstRun) {
+          setState((s) => ({ ...s, running: true, calibrating: true, calibTotal: burst, calibDone: 0 }));
+        }
         const frames: Uint8Array[] = [];
         let w = 0;
         let h = 0;
         let lastBase64: string | null = null;
-        for (let k = 0; k < STACK; k++) {
+        for (let k = 0; k < burst; k++) {
           const pic = await cam.takePictureAsync({
             quality: CAPTURE_QUALITY,
             skipProcessing: false,
@@ -119,6 +133,7 @@ export function useStarTrack(
             h = raw.height;
           }
           if (gray.length === w * h) frames.push(gray);
+          if (firstRun && !cancelled) setState((s) => ({ ...s, calibDone: k + 1 }));
         }
         if (!frames.length) throw new Error('sin captura');
         const stacked = stackFrames(frames);
@@ -147,15 +162,21 @@ export function useStarTrack(
             brightness: first ? first.brightness : 0,
             locked,
             focus,
+            calibrating: false,
+            calibDone: burst,
+            calibTotal: burst,
             blobs,
             platePxPerDeg: plateRef.current,
             error: null,
           });
         }
       } catch (e) {
-        if (!cancelled) setState((s) => ({ ...s, running: true, error: String(e) }));
+        if (!cancelled) {
+          setState((s) => ({ ...s, running: true, calibrating: false, error: String(e) }));
+        }
       } finally {
         inFlight.current = false;
+        firstRun = false;
       }
     };
 

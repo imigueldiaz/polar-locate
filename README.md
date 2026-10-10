@@ -61,6 +61,9 @@ sube nada a ningún sitio.
 - **Inicio de búsqueda**: la guía (mensajes de dirección, vibraciones y
   astrometría) solo se activa al pulsar **Búsqueda ON**; hasta entonces la app no
   te dirige ni vibra.
+- **Calibración inicial**: al iniciar la búsqueda aparece un aviso **«No muevas»**
+  y se capturan N fotos (configurable en Opciones → Avanzado, 10 por defecto), que
+  se apilan para ganar relación señal/ruido y fijar el estado inicial con más estrellas.
 - **Retícula del Star Adventurer / GTi**: además del retículo genérico, dibuja la
   esfera de reloj de 12 h del buscador polar (0 arriba, ticks cada 5°/30° y los
   anillos de Polaris) con la lectura **"Hora polar"** (hora angular de Polaris).

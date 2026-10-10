@@ -42,6 +42,7 @@ export default {
     on: 'ON',
     off: 'OFF',
     hint: 'Inicia la búsqueda para recibir guía',
+    calibrating: 'No muevas — buscando estado inicial',
   },
   options: {
     title: 'Opciones',
@@ -55,6 +56,7 @@ export default {
     advanced: 'Avanzado',
     pxPerDeg: 'Escala placa px/° (0 = auto)',
     tolDeg: 'Tolerancia centrado (°)',
+    calibFrames: 'Fotos calibración (estado inicial)',
     hint: 'Se guardan en una carpeta privada de la app; usa Compartir para exportarlas.',
   },
 };

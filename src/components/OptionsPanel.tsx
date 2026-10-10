@@ -108,6 +108,11 @@ export function OptionsPanel({ visible, prefs, onChange, onShare, onClose }: Pro
           value={prefs.tolDeg}
           onChange={(v) => onChange({ tolDeg: v })}
         />
+        <NumberField
+          label={t('options.calibFrames')}
+          value={prefs.calibFrames}
+          onChange={(v) => onChange({ calibFrames: Math.max(1, Math.round(v)) })}
+        />
         <Text style={styles.hint}>{t('options.hint')}</Text>
         <View style={styles.actions}>
           <Pressable style={styles.btn} onPress={onShare}>

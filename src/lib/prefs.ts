@@ -8,6 +8,7 @@ export type Prefs = {
   afLock: boolean;
   pxPerDeg: number;
   tolDeg: number;
+  calibFrames: number;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -18,6 +19,7 @@ export const DEFAULT_PREFS: Prefs = {
   afLock: true,
   pxPerDeg: 0,
   tolDeg: 0.5,
+  calibFrames: 10,
 };
 
 export function loadPrefs(): Prefs {
