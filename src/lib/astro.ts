@@ -1,6 +1,11 @@
 import * as Astronomy from 'astronomy-engine';
 
 const POLARIS_RA_HOURS = 2.530301028;
+
+/** Polaris hour angle (0–24 h) from Local Sidereal Time = its clock position around the pole. */
+export function polarisHourAngle(lstHours: number): number {
+  return (((lstHours - POLARIS_RA_HOURS) % 24) + 24) % 24;
+}
 const POLARIS_DEC_DEG = 89.264109444;
 const POLARIS_DIST_LY = 433;
 const DARK_SUN_ALT = -18;

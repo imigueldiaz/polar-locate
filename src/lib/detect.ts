@@ -32,6 +32,29 @@ export function stackFrames(frames: Uint8Array[]): Uint8Array {
 }
 
 /**
+ * Variance of the discrete Laplacian (a standard sharpness / focus metric):
+ * high on crisp star edges, low on a blurred or uniform frame.
+ */
+export function laplacianVariance(gray: Uint8Array, width: number, height: number): number {
+  let sum = 0;
+  let sumSq = 0;
+  let n = 0;
+  for (let y = 1; y < height - 1; y++) {
+    const row = y * width;
+    for (let x = 1; x < width - 1; x++) {
+      const i = row + x;
+      const lap = 4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - width] - gray[i + width];
+      sum += lap;
+      sumSq += lap * lap;
+      n++;
+    }
+  }
+  if (n === 0) return 0;
+  const mean = sum / n;
+  return sumSq / n - mean * mean;
+}
+
+/**
  * Up to `n` brightest, well-separated star candidates (brightest first), each
  * with its intensity centroid. Ignores a border margin (vignette / UI).
  */
@@ -164,6 +187,12 @@ export function selfCheck(): void {
     stacked[0] === 5 && stacked[1] === 100 && stacked[2] === 195 && stacked[3] === 50,
     `stack = ${stacked[0]},${stacked[1]},${stacked[2]},${stacked[3]}`,
   );
+
+  const flat = new Uint8Array(20 * 20);
+  console.assert(laplacianVariance(flat, 20, 20) === 0, 'lap flat=0');
+  const edge = new Uint8Array(20 * 20);
+  for (let y = 0; y < 20; y++) for (let x = 10; x < 20; x++) edge[y * 20 + x] = 255;
+  console.assert(laplacianVariance(edge, 20, 20) > 100, 'lap edge>0');
 
   console.log('detect.selfCheck: ok');
 }

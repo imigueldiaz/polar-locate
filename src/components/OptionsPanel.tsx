@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { t } from '../i18n';
 import type { Prefs } from '../lib/prefs';
@@ -22,13 +23,44 @@ function Toggle({
   onValueChange: (v: boolean) => void;
 }) {
   return (
-    <View style={styles.toggleRow}>
+    <View style={styles.row}>
       <Text style={styles.label}>{label}</Text>
       <Switch
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: theme.colors.off, true: theme.colors.redDim }}
         thumbColor={value ? theme.colors.redBright : theme.colors.textDim}
+      />
+    </View>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [txt, setTxt] = useState(String(value));
+  const commit = () => {
+    const n = parseFloat(txt.replace(',', '.'));
+    onChange(Number.isFinite(n) ? n : 0);
+  };
+  return (
+    <View style={styles.row}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={styles.input}
+        value={txt}
+        onChangeText={setTxt}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        keyboardType="numeric"
+        returnKeyType="done"
+        placeholderTextColor={theme.colors.textDim}
       />
     </View>
   );
@@ -49,6 +81,27 @@ export function OptionsPanel({ visible, prefs, onChange, onShare, onClose }: Pro
           label={t('options.saveTraces')}
           value={prefs.saveTraces}
           onValueChange={(v) => onChange({ saveTraces: v })}
+        />
+        <Toggle
+          label={t('options.nightMode')}
+          value={prefs.nightMode}
+          onValueChange={(v) => onChange({ nightMode: v })}
+        />
+        <Toggle
+          label={t('options.gtiReticle')}
+          value={prefs.gtiReticle}
+          onValueChange={(v) => onChange({ gtiReticle: v })}
+        />
+        <Text style={styles.section}>{t('options.advanced')}</Text>
+        <NumberField
+          label={t('options.pxPerDeg')}
+          value={prefs.pxPerDeg}
+          onChange={(v) => onChange({ pxPerDeg: v })}
+        />
+        <NumberField
+          label={t('options.tolDeg')}
+          value={prefs.tolDeg}
+          onChange={(v) => onChange({ tolDeg: v })}
         />
         <Text style={styles.hint}>{t('options.hint')}</Text>
         <View style={styles.actions}>
@@ -92,7 +145,14 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: theme.space(0.5),
   },
-  toggleRow: {
+  section: {
+    color: theme.colors.redDim,
+    fontFamily: theme.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: theme.space(0.5),
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -103,6 +163,18 @@ const styles = StyleSheet.create({
     fontFamily: theme.mono,
     fontSize: 12,
     flexShrink: 1,
+  },
+  input: {
+    color: theme.colors.redBright,
+    fontFamily: theme.mono,
+    fontSize: 12,
+    borderColor: theme.colors.line,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: theme.space(1),
+    minWidth: 72,
+    textAlign: 'right',
   },
   hint: {
     color: theme.colors.textDim,

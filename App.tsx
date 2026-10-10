@@ -5,6 +5,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
+import * as KeepAwake from 'expo-keep-awake';
+import * as Brightness from 'expo-brightness';
 
 import { OptionsPanel } from './src/components/OptionsPanel';
 import { Reticle, type Offset } from './src/components/Reticle';
@@ -13,7 +15,7 @@ import { usePrefs } from './src/hooks/usePrefs';
 import { useStarTrack } from './src/hooks/useStarTrack';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
-import { computeSky, darkness } from './src/lib/astro';
+import { computeSky, darkness, polarisHourAngle } from './src/lib/astro';
 import { formatAngle, formatClock, formatHours, formatLatLon } from './src/lib/format';
 import { errorToPole, skyToScreen } from './src/lib/pointing';
 import { appendTrace, traceUri } from './src/lib/session';
@@ -57,6 +59,8 @@ export default function App() {
   const pointing = usePointing();
   const starTrack = useStarTrack(camRef, cameraOn && !!cameraPerm?.granted, {
     saveFrames: prefs.saveJpegs,
+    pxPerDeg: prefs.pxPerDeg,
+    tolDeg: prefs.tolDeg,
   });
 
   useEffect(() => {
@@ -267,6 +271,26 @@ export default function App() {
     });
   }, [prefs.saveTraces, cameraOn, starTrack]);
 
+  useEffect(() => {
+    if (!prefs.nightMode) return;
+    let prev: number | null = null;
+    void (async () => {
+      try {
+        prev = await Brightness.getBrightnessAsync();
+        await Brightness.setBrightnessAsync(0.05);
+      } catch {
+        prev = null;
+      }
+      void KeepAwake.activateKeepAwakeAsync('polar-night');
+    })();
+    return () => {
+      void KeepAwake.deactivateKeepAwake('polar-night');
+      if (prev != null) void Brightness.setBrightnessAsync(prev);
+    };
+  }, [prefs.nightMode]);
+
+  const hourAngle = sky ? polarisHourAngle(sky.lstHours) : null;
+
   const dash = t('common.none');
 
   return (
@@ -297,6 +321,10 @@ export default function App() {
           value={sky ? formatHours(sky.lstHours) : dash}
         />
         <Row
+          label={t('readout.hourAngle')}
+          value={hourAngle != null ? formatHours(hourAngle) : dash}
+        />
+        <Row
           label={t('readout.polaris')}
           value={
             sky
@@ -321,6 +349,10 @@ export default function App() {
                 : '–'
               : dash
           }
+        />
+        <Row
+          label={t('readout.focus')}
+          value={starTrack.running ? String(Math.round(starTrack.focus)) : dash}
         />
         <Row
           label={t('readout.astro')}
@@ -356,6 +388,8 @@ export default function App() {
           star={starScreen}
           starLocked={starTrack.locked}
           field={astro.predictedPx.length ? astro.predictedPx : null}
+          gti={prefs.gtiReticle}
+          degToPx={PX_PER_DEG}
         />
       </View>
 

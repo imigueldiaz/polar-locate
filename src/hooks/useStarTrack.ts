@@ -6,13 +6,14 @@ import { toByteArray } from 'base64-js';
 import { decode } from 'jpeg-js';
 
 import { pxPerDegFromF35 } from '../lib/astrometry';
-import { brightestBlobs, stackFrames, toGrayscale } from '../lib/detect';
+import { brightestBlobs, laplacianVariance, stackFrames, toGrayscale } from '../lib/detect';
 import { saveFrame } from '../lib/session';
 
 const DECODE_WIDTH = 240;
 const INTERVAL_MS = 1100;
 const THRESHOLD = 60;
 const TOL = 0.05;
+const DEFAULT_TOL_DEG = 0.5;
 const MAX_BLOBS = 8;
 const STACK = 3; // frames averaged per tick (multi-frame stacking → better S/N)
 const CAPTURE_QUALITY = 0.8; // was 0.4; hard JPEG compression erased faint stars
@@ -26,6 +27,7 @@ export type StarTrack = {
   dy: number;
   brightness: number;
   locked: boolean;
+  focus: number;
   blobs: DetPx[];
   platePxPerDeg: number | null;
   error: string | null;
@@ -38,6 +40,7 @@ const IDLE: StarTrack = {
   dy: 0,
   brightness: 0,
   locked: false,
+  focus: 0,
   blobs: [],
   platePxPerDeg: null,
   error: null,
@@ -55,16 +58,20 @@ function focal35FromExif(exif: unknown): number | null {
 export function useStarTrack(
   cameraRef: RefObject<CameraView | null>,
   enabled: boolean,
-  options: { saveFrames?: boolean } = {},
+  options: { saveFrames?: boolean; pxPerDeg?: number; tolDeg?: number } = {},
 ): StarTrack {
   const [state, setState] = useState<StarTrack>(IDLE);
   const inFlight = useRef(false);
   const plateRef = useRef<number | null>(null);
   const saveRef = useRef(false);
+  const pxRef = useRef(0);
+  const tolRef = useRef(DEFAULT_TOL_DEG);
 
   useEffect(() => {
     saveRef.current = !!options.saveFrames;
-  }, [options.saveFrames]);
+    pxRef.current = options.pxPerDeg ?? 0;
+    tolRef.current = options.tolDeg && options.tolDeg > 0 ? options.tolDeg : DEFAULT_TOL_DEG;
+  }, [options.saveFrames, options.pxPerDeg, options.tolDeg]);
 
   useEffect(() => {
     if (!enabled) {
@@ -122,7 +129,11 @@ export function useStarTrack(
         const first = found[0];
         const dx = first ? first.x / cx - 1 : 0;
         const dy = first ? first.y / cy - 1 : 0;
-        const locked = !!first && Math.hypot(dx, dy) < TOL;
+        const focus = laplacianVariance(stacked, w, h);
+        const px = pxRef.current > 0 ? pxRef.current : plateRef.current;
+        const offDeg = px ? Math.hypot(dx * cx, dy * cy) / px : null;
+        const locked =
+          !!first && (offDeg != null ? offDeg < tolRef.current : Math.hypot(dx, dy) < TOL);
         if (saveRef.current && lastBase64) {
           const comment = `Polaris=${first ? 'si' : 'no'} blobs=${found.length} locked=${locked} dx=${dx.toFixed(3)} dy=${dy.toFixed(3)} t=${new Date().toISOString()}`;
           saveFrame(lastBase64, comment);
@@ -135,6 +146,7 @@ export function useStarTrack(
             dy,
             brightness: first ? first.brightness : 0,
             locked,
+            focus,
             blobs,
             platePxPerDeg: plateRef.current,
             error: null,

@@ -1,8 +1,22 @@
 import { File, Paths } from 'expo-file-system';
 
-export type Prefs = { saveJpegs: boolean; saveTraces: boolean };
+export type Prefs = {
+  saveJpegs: boolean;
+  saveTraces: boolean;
+  nightMode: boolean;
+  gtiReticle: boolean;
+  pxPerDeg: number;
+  tolDeg: number;
+};
 
-export const DEFAULT_PREFS: Prefs = { saveJpegs: false, saveTraces: false };
+export const DEFAULT_PREFS: Prefs = {
+  saveJpegs: false,
+  saveTraces: false,
+  nightMode: false,
+  gtiReticle: true,
+  pxPerDeg: 0,
+  tolDeg: 0.5,
+};
 
 export function loadPrefs(): Prefs {
   try {
