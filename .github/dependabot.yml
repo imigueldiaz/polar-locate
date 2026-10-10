@@ -5,6 +5,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Paquetes fijados por la matriz de versiones del Expo SDK: se actualizan
+      # con `npx expo install --fix` (o al subir de SDK), no con bumps de npm.
+      - dependency-name: 'expo*'
+      - dependency-name: 'react'
+      - dependency-name: 'react-native'
+      - dependency-name: 'react-native-svg'
+      - dependency-name: '@types/react'
+      - dependency-name: 'typescript'
+      - dependency-name: 'eslint'
+      - dependency-name: 'eslint-config-expo'
   - package-ecosystem: github-actions
     directory: '/'
     schedule:
