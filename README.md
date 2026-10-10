@@ -58,6 +58,19 @@ sube nada a ningún sitio.
 - **Astrometría en el dispositivo**: identifica el campo de estrellas contra un
   catálogo embebido y **corrige el rumbo** a partir de la propia imagen,
   eliminando la dependencia del magnetómetro (que falla cerca de metal).
+- **Retícula del Star Adventurer / GTi**: además del retículo genérico, dibuja la
+  esfera de reloj de 12 h del buscador polar (0 arriba, ticks cada 5°/30° y los
+  anillos de Polaris) con la lectura **"Hora polar"** (hora angular de Polaris).
+- **Apilado multi-frame**: promedia varias capturas por ciclo y sube la calidad
+  de captura para sacar estrellas débiles.
+- **Enfoque**: lectura de nitidez (varianza del laplaciano) y opción de
+  **bloquear el foco** tras el primer autoenfoque, para no «cazar» en la oscuridad.
+- **Modo noche**: baja el brillo de pantalla al mínimo y la mantiene encendida.
+- **Escala de placa y tolerancia** de centrado ajustables a mano (Opciones →
+  Avanzado), por si quieres afinar más allá de lo que da el EXIF.
+- **Menú de Opciones** con dos registros **opcionales y desactivados por defecto**:
+  guardar los JPEG de detección (con un comentario incrustado que nombra lo
+  detectado) y almacenar trazas en JSONL para análisis. Nada se guarda si no lo activas.
 - **Tema rojo de visión nocturna** para no arruinar la adaptación a la oscuridad.
 
 ## Cómo funciona
@@ -67,8 +80,9 @@ sube nada a ningún sitio.
    celeste real y cuánto se separan.
 2. **Puntería por sensores** (`src/lib/pointing.ts`): el acelerómetro da la
    vertical (altura y balanceo fiables) y el magnetómetro un azimut aproximado.
-3. **Detección de estrellas** (`src/lib/detect.ts`): se captura, se reduce a 240
-   px, se pasa a escala de grises y se busca el punto más brillante.
+3. **Detección de estrellas** (`src/lib/detect.ts`): se capturan varias tomas, se
+   apilan (multi-frame), se reducen a 240 px, se pasan a escala de grises y se
+   busca el punto más brillante (más una medida de nitidez para el enfoque).
 4. **Astrometría** (`src/lib/astrometry.ts` + `src/lib/field.ts`): se predicen
    las estrellas del catálogo en el campo de visión y se casan con las
    detectadas (ICP) → se corrige azimut, altura y escala real (px/grado). La
@@ -89,6 +103,7 @@ Detalles técnicos en [`AGENTS.md`](AGENTS.md).
 | M4 | Visión por computador (estrella más brillante) | ✅ |
 | M4.5 | Catálogo + astrometría (mata el magnetómetro) | ✅ |
 | M5 | Build EAS → APK (+ iOS opcional) | ✅ (config) |
+| M6 | Extras: opciones/registro, retícula GTi, modo noche, enfoque, escala/tolerancia | ✅ |
 
 Probado en **Expo Go**. La astrometría funciona con capturas periódicas; para
 tiempo real puro (VisionCamera) haría falta un *development build*.
@@ -185,6 +200,9 @@ npx eas-cli@latest build -p ios --profile preview
   imagen ocurren íntegramente en tu teléfono.
 - **Sin red.** La app no hace peticiones a servidores ni envía datos.
 - **Sin telemetría.**
+- **Registros opcionales.** El guardado de JPEG y trazas (menú Opciones) escribe
+  solo en la carpeta privada de la app y solo si lo activas tú; nunca sale del
+  dispositivo salvo que uses *Compartir*.
 - **Permisos:** *ubicación* (para los cálculos) y *cámara* (para apuntar).
   Ninguno se usa para otro fin.
 
