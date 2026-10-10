@@ -11,6 +11,27 @@ export function toGrayscale(rgba: Uint8Array, width: number, height: number): Ui
 }
 
 /**
+ * Element-wise mean of several equally sized grayscale frames (multi-frame
+ * stacking): raises signal/noise so faint stars survive detection. Frames must
+ * be pixel-aligned (static camera); mismatched lengths are skipped.
+ */
+export function stackFrames(frames: Uint8Array[]): Uint8Array {
+  if (frames.length === 0) return new Uint8Array(0);
+  const n = frames[0].length;
+  const acc = new Float64Array(n);
+  let used = 0;
+  for (const f of frames) {
+    if (f.length !== n) continue;
+    for (let i = 0; i < n; i++) acc[i] += f[i];
+    used++;
+  }
+  const out = new Uint8Array(n);
+  if (used === 0) return out;
+  for (let i = 0; i < n; i++) out[i] = Math.round(acc[i] / used);
+  return out;
+}
+
+/**
  * Up to `n` brightest, well-separated star candidates (brightest first), each
  * with its intensity centroid. Ignores a border margin (vignette / UI).
  */
@@ -137,6 +158,12 @@ export function selfCheck(): void {
 
   const off = starOffset(25, 12, width, height);
   console.assert(near(off.dx, 0.25) && near(off.dy, -0.2), `offset = ${off.dx},${off.dy}`);
+
+  const stacked = stackFrames([new Uint8Array([0, 100, 200, 40]), new Uint8Array([10, 100, 190, 60])]);
+  console.assert(
+    stacked[0] === 5 && stacked[1] === 100 && stacked[2] === 195 && stacked[3] === 50,
+    `stack = ${stacked[0]},${stacked[1]},${stacked[2]},${stacked[3]}`,
+  );
 
   console.log('detect.selfCheck: ok');
 }

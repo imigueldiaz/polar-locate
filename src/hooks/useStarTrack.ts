@@ -6,13 +6,15 @@ import { toByteArray } from 'base64-js';
 import { decode } from 'jpeg-js';
 
 import { pxPerDegFromF35 } from '../lib/astrometry';
-import { brightestBlobs, toGrayscale } from '../lib/detect';
+import { brightestBlobs, stackFrames, toGrayscale } from '../lib/detect';
 
 const DECODE_WIDTH = 240;
 const INTERVAL_MS = 1100;
 const THRESHOLD = 60;
 const TOL = 0.05;
 const MAX_BLOBS = 8;
+const STACK = 3; // frames averaged per tick (multi-frame stacking → better S/N)
+const CAPTURE_QUALITY = 0.8; // was 0.4; hard JPEG compression erased faint stars
 
 export type DetPx = { x: number; y: number };
 
@@ -70,29 +72,43 @@ export function useStarTrack(
       if (!cam) return;
       inFlight.current = true;
       try {
-        const pic = await cam.takePictureAsync({
-          quality: 0.4,
-          skipProcessing: false,
-          shutterSound: false,
-          exif: plateRef.current == null,
-        });
-        if (!pic?.uri) throw new Error('sin captura');
-        const f35 = plateRef.current == null ? focal35FromExif(pic.exif) : null;
-        const small = await manipulateAsync(
-          pic.uri,
-          [{ resize: { width: DECODE_WIDTH } }],
-          { base64: true, compress: 0.7, format: SaveFormat.JPEG },
-        );
-        if (!small.base64) throw new Error('sin base64');
-        if (f35) plateRef.current = pxPerDegFromF35(f35, small.width);
-        const raw = decode(toByteArray(small.base64), {
-          useTArray: true,
-          formatAsRGBA: true,
-        });
-        const gray = toGrayscale(raw.data, raw.width, raw.height);
-        const found = brightestBlobs(gray, raw.width, raw.height, THRESHOLD, MAX_BLOBS);
-        const cx = raw.width / 2;
-        const cy = raw.height / 2;
+        const frames: Uint8Array[] = [];
+        let w = 0;
+        let h = 0;
+        for (let k = 0; k < STACK; k++) {
+          const pic = await cam.takePictureAsync({
+            quality: CAPTURE_QUALITY,
+            skipProcessing: false,
+            shutterSound: false,
+            exif: plateRef.current == null,
+          });
+          if (!pic?.uri) continue;
+          const small = await manipulateAsync(
+            pic.uri,
+            [{ resize: { width: DECODE_WIDTH } }],
+            { base64: true, compress: 0.8, format: SaveFormat.JPEG },
+          );
+          if (!small.base64) continue;
+          if (plateRef.current == null) {
+            const f35 = focal35FromExif(pic.exif);
+            if (f35) plateRef.current = pxPerDegFromF35(f35, small.width);
+          }
+          const raw = decode(toByteArray(small.base64), {
+            useTArray: true,
+            formatAsRGBA: true,
+          });
+          const gray = toGrayscale(raw.data, raw.width, raw.height);
+          if (!frames.length) {
+            w = raw.width;
+            h = raw.height;
+          }
+          if (gray.length === w * h) frames.push(gray);
+        }
+        if (!frames.length) throw new Error('sin captura');
+        const stacked = stackFrames(frames);
+        const found = brightestBlobs(stacked, w, h, THRESHOLD, MAX_BLOBS);
+        const cx = w / 2;
+        const cy = h / 2;
         const blobs = found.map((b) => ({ x: b.x - cx, y: b.y - cy }));
         const first = found[0];
         const dx = first ? first.x / cx - 1 : 0;
