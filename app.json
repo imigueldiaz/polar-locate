@@ -51,6 +51,13 @@
         "projectId": "ea5e6a25-6154-495f-b160-c444d198d129"
       }
     },
+    "updates": {
+      "url": "https://u.expo.dev/ea5e6a25-6154-495f-b160-c444d198d129",
+      "enabled": true
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "owner": "imigueldiazs-team"
   }
 }

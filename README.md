@@ -29,6 +29,7 @@ sube nada a ningún sitio.
 - [Requisitos](#requisitos)
 - [Desarrollo](#desarrollo)
 - [Compilar el APK (Android)](#compilar-el-apk-android)
+- [Actualizaciones (OTA)](#actualizaciones-ota)
 - [iOS (opcional)](#ios-opcional)
 - [Privacidad](#privacidad)
 - [Créditos y atribución](#créditos-y-atribución)
@@ -132,6 +133,24 @@ npx eas-cli@latest build -p android --profile preview
 El perfil `preview` genera un **APK** instalable (distribución interna) y te da
 un enlace de descarga. `production` genera el build de tienda con incremento de
 versión automático.
+
+## Actualizaciones (OTA)
+
+Tras el primer build, los cambios que **solo afectan a JavaScript/estilos** (sin
+tocar dependencias nativas) se publican al instante con **EAS Update**, sin
+regenerar el APK:
+
+```bash
+npx eas-cli@latest update --branch preview
+```
+
+Las apps ya instaladas (perfil `preview`) descargan la actualización al abrirse.
+Cada perfil lleva su `channel` (`preview`/`production`) y la app usa
+`runtimeVersion` = `appVersion`, de modo que una actualización solo llega a
+builds compatibles. Si cambias módulos nativos, hay que **recompilar** el APK.
+
+> Nota: el APK que instales **antes** de añadir `expo-updates` no recibe OTA;
+> hace falta un build nuevo para empezar a usarlas.
 
 ## iOS (opcional)
 

@@ -46,7 +46,8 @@ Run typecheck and lint before declaring any task done. CI (`.github/workflows/ci
 ## Building / distribution
 
 - Primary deliverable is an **Android APK**. iOS is **optional**/secondary (needs an Apple Developer account; EAS handles certs).
-- EAS config is in `eas.json`: `preview` = Android **APK** + internal distribution (this is the deliverable); `production` = store build with `autoIncrement`; `development` = dev client (needs `npx expo install expo-dev-client` first).
+- EAS config is in `eas.json`: `preview` = Android **APK** + internal distribution (the deliverable, now with `autoIncrement`); `production` = store build with `autoIncrement`; `development` = dev client (needs `npx expo install expo-dev-client` first). Each profile carries a `channel` (`preview`/`production`/`development`).
+- OTA: `expo-updates` is installed; `app.json` sets `updates.url` (`https://u.expo.dev/<projectId>`) and `runtimeVersion {policy:'appVersion'}`. Publish JS-only changes with `npx eas-cli@latest update --branch preview` — reaches only builds that already embed expo-updates; native changes need a new build.
 - App identifiers are `org.polarlocate` (`android.package` / `ios.bundleIdentifier`). Change before any store publish.
 - Build in the cloud with EAS — no local Android Studio / Xcode needed:
   - APK: `npx eas-cli@latest build -p android --profile preview`
