@@ -28,7 +28,7 @@
     "i18n-js": "^4.5.4",
     "jpeg-js": "^0.4.4",
     "react": "19.2.3",
-    "react-native": "0.86.3",
+    "react-native": "0.87.1",
     "react-native-svg": "15.15.4"
   },
   "devDependencies": {
