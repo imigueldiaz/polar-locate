@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "polar-locate",
+    "slug": "polar-locate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#000000",
+    "ios": {
+      "bundleIdentifier": "org.polarlocate",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "org.polarlocate",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Polar Locate usa tu ubicación para calcular la posición de la estrella polar."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Polar Locate usa la cámara para centrar la estrella polar.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
+  }
+}

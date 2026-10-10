@@ -1,0 +1,37 @@
+polar-locate
+Copyright (c) 2026 Ignacio de Miguel Díaz <imigueldiaz@tutamail.com>
+SPDX-License-Identifier: MIT
+
+This project is distributed under the MIT License (see LICENSE).
+
+ATTRIBUTION NOTICE
+==================
+
+1. Third-party software
+-----------------------
+This product includes software developed by third parties (Expo, React,
+React Native, react-native-svg, astronomy-engine, i18n-js, base64-js,
+jpeg-js, and others). The full list, with versions, licenses and copyright
+holders, is in VENDORS.md. Their license texts are reproduced there.
+
+Portions of this project are based on the Expo "blank-typescript" template,
+Copyright (c) 2015-present 650 Industries, Inc. (aka Expo), MIT licensed.
+
+2. Astronomical data
+--------------------
+This product includes data derived from the HYG Database v4.1
+(https://github.com/astronexus/HYG-Database) by David Nash and contributors,
+licensed under the Creative Commons Attribution-ShareAlike 4.0 International
+License (CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/).
+
+The embedded star catalogue (src/lib/catalog.ts) is an adaptation of that
+data and is likewise distributed under CC BY-SA 4.0. It is a separate work
+from the application source code, which remains under the MIT License.
+
+Attribution: HYG Database v4.1 — astronexus (David Nash), CC BY-SA 4.0.
+
+3. If you redistribute
+----------------------
+Keep this NOTICE, the LICENSE file, and VENDORS.md with any copies. Maintain
+the attribution to Ignacio de Miguel Díaz and to the third parties and data
+sources listed above.
