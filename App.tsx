@@ -51,6 +51,7 @@ export default function App() {
   const [perm, setPerm] = useState<Perm>('unknown');
   const [cameraOn, setCameraOn] = useState(false);
   const [zoom, setZoom] = useState(0);
+  const [searching, setSearching] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
 
   const { prefs, update } = usePrefs();
@@ -118,7 +119,7 @@ export default function App() {
 
   const att = pointing.attitude;
   const astro = useAstrometry({
-    enabled: cameraOn && !!cameraPerm?.granted,
+    enabled: searching && cameraOn && !!cameraPerm?.granted,
     blobs: starTrack.blobs,
     att,
     lat: coords?.lat ?? null,
@@ -190,9 +191,10 @@ export default function App() {
     return null;
   }, [astro, cameraOn, starTrack, guidance, attUse]);
 
-  const alignedNow = fix ? fix.locked : false;
+  const alignedNow = searching && !!fix && fix.locked;
 
   const guideText = useMemo(() => {
+    if (!searching) return t('search.hint');
     if (!fix) return t('guide.noSensor');
     if (fix.locked) return t('guide.aligned');
     const tol = fix.cv ? 0.05 : TOL_DEG;
@@ -203,7 +205,7 @@ export default function App() {
     }
     const mag = fix.cv ? `${Math.round(fix.mag * 100)}%` : formatAngle(fix.mag, 1);
     return parts.length ? `${parts.join(' · ')}  ${mag}` : mag;
-  }, [fix]);
+  }, [fix, searching]);
 
   const starScreen = starTrack.found
     ? { x: starTrack.dx * RETICLE_R, y: starTrack.dy * RETICLE_R }
@@ -213,6 +215,7 @@ export default function App() {
   fixRef.current = fix;
 
   useEffect(() => {
+    if (!searching) return;
     const id = setInterval(() => {
       const f = fixRef.current;
       if (!f || f.locked) return;
@@ -230,7 +233,7 @@ export default function App() {
       })();
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [searching]);
 
   const shareTraces = useCallback(async () => {
     try {
@@ -253,7 +256,7 @@ export default function App() {
   }, [astro, attUse]);
 
   useEffect(() => {
-    if (!prefs.saveTraces || !cameraOn || !starTrack.running) return;
+    if (!prefs.saveTraces || !searching || !cameraOn || !starTrack.running) return;
     const a = astroRef.current;
     appendTrace({
       t: Date.now(),
@@ -269,7 +272,7 @@ export default function App() {
       pxPerDeg: a.fix ? a.fix.pxPerDeg : null,
       att: attUseRef.current,
     });
-  }, [prefs.saveTraces, cameraOn, starTrack]);
+  }, [prefs.saveTraces, searching, cameraOn, starTrack]);
 
   useEffect(() => {
     if (!prefs.nightMode) return;
@@ -435,6 +438,14 @@ export default function App() {
         >
           <Text style={[styles.toggleText, cameraOn && styles.toggleTextOn]}>
             {t('camera.label')} {cameraOn ? t('camera.on') : t('camera.off')}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.toggle, searching && styles.toggleOn]}
+          onPress={() => setSearching((v) => !v)}
+        >
+          <Text style={[styles.toggleText, searching && styles.toggleTextOn]}>
+            {t('search.label')} {searching ? t('search.on') : t('search.off')}
           </Text>
         </Pressable>
       </View>

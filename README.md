@@ -58,6 +58,9 @@ sube nada a ningún sitio.
 - **Astrometría en el dispositivo**: identifica el campo de estrellas contra un
   catálogo embebido y **corrige el rumbo** a partir de la propia imagen,
   eliminando la dependencia del magnetómetro (que falla cerca de metal).
+- **Inicio de búsqueda**: la guía (mensajes de dirección, vibraciones y
+  astrometría) solo se activa al pulsar **Búsqueda ON**; hasta entonces la app no
+  te dirige ni vibra.
 - **Retícula del Star Adventurer / GTi**: además del retículo genérico, dibuja la
   esfera de reloj de 12 h del buscador polar (0 arriba, ticks cada 5°/30° y los
   anillos de Polaris) con la lectura **"Hora polar"** (hora angular de Polaris).
@@ -88,7 +91,7 @@ sube nada a ningún sitio.
    detectadas (ICP) → se corrige azimut, altura y escala real (px/grado). La
    actitud corregida sustituye al sensor.
 5. **Guía y hápticos**: la diferencia hasta el polo genera las instrucciones en
-   pantalla y los toques de vibración.
+   pantalla y los toques de vibración (solo con la búsqueda iniciada).
 
 Detalles técnicos en [`AGENTS.md`](AGENTS.md).
 

@@ -37,6 +37,12 @@ export default {
     on: 'ON',
     off: 'OFF',
   },
+  search: {
+    label: 'Búsqueda',
+    on: 'ON',
+    off: 'OFF',
+    hint: 'Inicia la búsqueda para recibir guía',
+  },
   options: {
     title: 'Opciones',
     saveJpegs: 'Guardar JPEG de detección',
