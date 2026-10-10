@@ -45,6 +45,7 @@ export default {
     close: 'Cerrar',
     nightMode: 'Modo noche (pantalla activa, brillo mínimo)',
     gtiReticle: 'Retícula Star Adventurer GTi',
+    afLock: 'Foco bloqueado (enfoque una vez)',
     advanced: 'Avanzado',
     pxPerDeg: 'Escala placa px/° (0 = auto)',
     tolDeg: 'Tolerancia centrado (°)',

@@ -5,6 +5,7 @@ export type Prefs = {
   saveTraces: boolean;
   nightMode: boolean;
   gtiReticle: boolean;
+  afLock: boolean;
   pxPerDeg: number;
   tolDeg: number;
 };
@@ -14,6 +15,7 @@ export const DEFAULT_PREFS: Prefs = {
   saveTraces: false,
   nightMode: false,
   gtiReticle: true,
+  afLock: true,
   pxPerDeg: 0,
   tolDeg: 0.5,
 };

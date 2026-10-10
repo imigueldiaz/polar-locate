@@ -92,6 +92,11 @@ export function OptionsPanel({ visible, prefs, onChange, onShare, onClose }: Pro
           value={prefs.gtiReticle}
           onValueChange={(v) => onChange({ gtiReticle: v })}
         />
+        <Toggle
+          label={t('options.afLock')}
+          value={prefs.afLock}
+          onValueChange={(v) => onChange({ afLock: v })}
+        />
         <Text style={styles.section}>{t('options.advanced')}</Text>
         <NumberField
           label={t('options.pxPerDeg')}

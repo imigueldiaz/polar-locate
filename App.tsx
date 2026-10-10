@@ -303,7 +303,14 @@ export default function App() {
 
       {cameraOn && cameraPerm?.granted && (
         <View style={styles.cameraWrap} pointerEvents="none">
-          <CameraView ref={camRef} style={styles.camera} facing="back" zoom={zoom} active />
+          <CameraView
+            ref={camRef}
+            style={styles.camera}
+            facing="back"
+            zoom={zoom}
+            autofocus={prefs.afLock ? 'on' : 'off'}
+            active
+          />
           <View style={styles.cameraDim} />
         </View>
       )}
