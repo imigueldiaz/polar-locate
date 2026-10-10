@@ -4,15 +4,19 @@ import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
 
+import { OptionsPanel } from './src/components/OptionsPanel';
 import { Reticle, type Offset } from './src/components/Reticle';
 import { usePointing } from './src/hooks/usePointing';
+import { usePrefs } from './src/hooks/usePrefs';
 import { useStarTrack } from './src/hooks/useStarTrack';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
 import { computeSky, darkness } from './src/lib/astro';
 import { formatAngle, formatClock, formatHours, formatLatLon } from './src/lib/format';
 import { errorToPole, skyToScreen } from './src/lib/pointing';
+import { appendTrace, traceUri } from './src/lib/session';
 import { theme } from './src/theme';
 
 type Coords = { lat: number; lon: number; acc: number };
@@ -45,11 +49,15 @@ export default function App() {
   const [perm, setPerm] = useState<Perm>('unknown');
   const [cameraOn, setCameraOn] = useState(false);
   const [zoom, setZoom] = useState(0);
+  const [optsOpen, setOptsOpen] = useState(false);
 
+  const { prefs, update } = usePrefs();
   const [cameraPerm, requestCamera] = useCameraPermissions();
   const camRef = useRef<CameraView>(null);
   const pointing = usePointing();
-  const starTrack = useStarTrack(camRef, cameraOn && !!cameraPerm?.granted);
+  const starTrack = useStarTrack(camRef, cameraOn && !!cameraPerm?.granted, {
+    saveFrames: prefs.saveJpegs,
+  });
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -220,11 +228,54 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  const shareTraces = useCallback(async () => {
+    try {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(traceUri(), {
+          mimeType: 'application/json',
+          dialogTitle: t('options.share'),
+        });
+      }
+    } catch {
+      return;
+    }
+  }, []);
+
+  const astroRef = useRef(astro);
+  const attUseRef = useRef(attUse);
+  useEffect(() => {
+    astroRef.current = astro;
+    attUseRef.current = attUse;
+  }, [astro, attUse]);
+
+  useEffect(() => {
+    if (!prefs.saveTraces || !cameraOn || !starTrack.running) return;
+    const a = astroRef.current;
+    appendTrace({
+      t: Date.now(),
+      found: starTrack.found,
+      dx: starTrack.dx,
+      dy: starTrack.dy,
+      brightness: starTrack.brightness,
+      locked: starTrack.locked,
+      blobs: starTrack.blobs.length,
+      matches: a.fix ? a.fix.matches : null,
+      azCorr: a.fix ? a.fix.azCorr : null,
+      altCorr: a.fix ? a.fix.altCorr : null,
+      pxPerDeg: a.fix ? a.fix.pxPerDeg : null,
+      att: attUseRef.current,
+    });
+  }, [prefs.saveTraces, cameraOn, starTrack]);
+
   const dash = t('common.none');
 
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
+
+      <Pressable style={styles.optionsBtn} onPress={() => setOptsOpen(true)}>
+        <Text style={styles.optionsBtnText}>{t('options.title')}</Text>
+      </Pressable>
 
       {cameraOn && cameraPerm?.granted && (
         <View style={styles.cameraWrap} pointerEvents="none">
@@ -346,6 +397,14 @@ export default function App() {
           </Text>
         </Pressable>
       </View>
+
+      <OptionsPanel
+        visible={optsOpen}
+        prefs={prefs}
+        onChange={update}
+        onShare={shareTraces}
+        onClose={() => setOptsOpen(false)}
+      />
     </View>
   );
 }
@@ -366,6 +425,23 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space(1),
     paddingHorizontal: theme.space(1.5),
     minWidth: 250,
+  },
+  optionsBtn: {
+    position: 'absolute',
+    top: 48,
+    right: 16,
+    borderColor: theme.colors.redDim,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: theme.space(0.75),
+    paddingHorizontal: theme.space(1.5),
+  },
+  optionsBtnText: {
+    color: theme.colors.text,
+    fontFamily: theme.mono,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   title: {
     color: theme.colors.redBright,

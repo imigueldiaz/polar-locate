@@ -35,4 +35,12 @@ export default {
     on: 'ON',
     off: 'OFF',
   },
+  options: {
+    title: 'Opciones',
+    saveJpegs: 'Guardar JPEG de detección',
+    saveTraces: 'Guardar trazas (análisis)',
+    share: 'Compartir registro',
+    close: 'Cerrar',
+    hint: 'Se guardan en una carpeta privada de la app; usa Compartir para exportarlas.',
+  },
 };

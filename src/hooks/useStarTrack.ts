@@ -7,6 +7,7 @@ import { decode } from 'jpeg-js';
 
 import { pxPerDegFromF35 } from '../lib/astrometry';
 import { brightestBlobs, stackFrames, toGrayscale } from '../lib/detect';
+import { saveFrame } from '../lib/session';
 
 const DECODE_WIDTH = 240;
 const INTERVAL_MS = 1100;
@@ -54,10 +55,16 @@ function focal35FromExif(exif: unknown): number | null {
 export function useStarTrack(
   cameraRef: RefObject<CameraView | null>,
   enabled: boolean,
+  options: { saveFrames?: boolean } = {},
 ): StarTrack {
   const [state, setState] = useState<StarTrack>(IDLE);
   const inFlight = useRef(false);
   const plateRef = useRef<number | null>(null);
+  const saveRef = useRef(false);
+
+  useEffect(() => {
+    saveRef.current = !!options.saveFrames;
+  }, [options.saveFrames]);
 
   useEffect(() => {
     if (!enabled) {
@@ -75,6 +82,7 @@ export function useStarTrack(
         const frames: Uint8Array[] = [];
         let w = 0;
         let h = 0;
+        let lastBase64: string | null = null;
         for (let k = 0; k < STACK; k++) {
           const pic = await cam.takePictureAsync({
             quality: CAPTURE_QUALITY,
@@ -89,6 +97,7 @@ export function useStarTrack(
             { base64: true, compress: 0.8, format: SaveFormat.JPEG },
           );
           if (!small.base64) continue;
+          lastBase64 = small.base64;
           if (plateRef.current == null) {
             const f35 = focal35FromExif(pic.exif);
             if (f35) plateRef.current = pxPerDegFromF35(f35, small.width);
@@ -114,6 +123,10 @@ export function useStarTrack(
         const dx = first ? first.x / cx - 1 : 0;
         const dy = first ? first.y / cy - 1 : 0;
         const locked = !!first && Math.hypot(dx, dy) < TOL;
+        if (saveRef.current && lastBase64) {
+          const comment = `Polaris=${first ? 'si' : 'no'} blobs=${found.length} locked=${locked} dx=${dx.toFixed(3)} dy=${dy.toFixed(3)} t=${new Date().toISOString()}`;
+          saveFrame(lastBase64, comment);
+        }
         if (!cancelled) {
           setState({
             running: true,
