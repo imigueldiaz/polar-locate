@@ -41,7 +41,7 @@ npx expo-doctor             # diagnose dependency / config issues
 npx expo install --fix      # fix incompatible package versions
 ```
 
-Run typecheck and lint before declaring any task done. CI (`.github/workflows/ci.yml`) runs typecheck + lint + `npm test` + expo-doctor; CodeQL (`.github/workflows/codeql.yml`) does code scanning; Dependabot (`.github/dependabot.yml`) keeps deps/actions fresh.
+Run typecheck and lint before declaring any task done. CI (`.github/workflows/ci.yml`) runs typecheck + lint + `npm test` + expo-doctor; CodeQL (`.github/workflows/codeql.yml`) does code scanning; Dependabot (`.github/dependabot.yml`) keeps deps/actions fresh; `release.yml` builds the APK with EAS and attaches it to a GitHub Release on `v*` tags (needs the `EXPO_TOKEN` Actions secret).
 
 ## Building / distribution
 

@@ -29,6 +29,7 @@ sube nada a ningún sitio.
 - [Requisitos](#requisitos)
 - [Desarrollo](#desarrollo)
 - [Compilar el APK (Android)](#compilar-el-apk-android)
+- [Releases automáticas (GitHub)](#releases-automáticas-github)
 - [Actualizaciones (OTA)](#actualizaciones-ota)
 - [iOS (opcional)](#ios-opcional)
 - [Privacidad](#privacidad)
@@ -133,6 +134,23 @@ npx eas-cli@latest build -p android --profile preview
 El perfil `preview` genera un **APK** instalable (distribución interna) y te da
 un enlace de descarga. `production` genera el build de tienda con incremento de
 versión automático.
+
+### Releases automáticas (GitHub)
+
+Si añades el secreto `EXPO_TOKEN` (en Expo → *Access tokens* → créalo, y en
+GitHub → *Settings → Secrets and variables → Actions* → guárdalo como
+`EXPO_TOKEN`), el workflow
+[`.github/workflows/release.yml`](.github/workflows/release.yml) **compila el
+APK y lo publica como GitHub Release**. Se dispara al empujar un tag `v*` o
+manualmente (*Actions → Android APK Release → Run workflow*):
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+Expo **no** lo hace por sí solo: EAS no tiene una función de «GitHub Release»
+(publica a tiendas y aloja el APK); este workflow añade ese paso descargando el
+artefacto del build.
 
 ## Actualizaciones (OTA)
 
