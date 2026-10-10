@@ -40,4 +40,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: gh release create "$TAG" polar-locate.apk --title "$TAG" --generate-notes
+          REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG" polar-locate.apk --title "$TAG" --generate-notes
+          # Añade un QR de descarga del APK a la descripción (imagen generada por un servicio externo).
+          # ponytail: QR vía api.qrserver.com; si se cae, generar el PNG con qrencode y adjuntarlo como asset.
+          APK_URL="https://github.com/$REPO/releases/download/$TAG/polar-locate.apk"
+          QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=$APK_URL"
+          BODY=$(gh release view "$TAG" --json body -q .body)
+          gh release edit "$TAG" --notes "$(printf '%s\n\n### Descarga rápida (escanea el QR)\n\n[![QR de descarga del APK](%s)](%s)\n' "$BODY" "$QR_URL" "$APK_URL")"
