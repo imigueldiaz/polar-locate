@@ -8,6 +8,8 @@
 ![Plataforma: Android (APK)](https://img.shields.io/badge/plataforma-Android%20APK-3ddc84.svg)
 ![Plataforma: iOS (opcional)](https://img.shields.io/badge/plataforma-iOS%20opcional-lightgrey.svg)
 ![Idioma: español](https://img.shields.io/badge/idioma-espa%C3%B1ol-red.svg)
+[![CI](https://github.com/imigueldiaz/polar-locate/actions/workflows/ci.yml/badge.svg)](https://github.com/imigueldiaz/polar-locate/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/imigueldiaz/polar-locate/actions/workflows/codeql.yml/badge.svg)](https://github.com/imigueldiaz/polar-locate/actions/workflows/codeql.yml)
 
 Ayuda a apuntar una **montura de seguimiento** (p. ej. una Sky-Watcher Star
 Adventurer / GTi) al polo celeste. Montas el teléfono en la zapata del flash del
@@ -111,8 +113,9 @@ permisos de **ubicación** y **cámara**.
 Comprobaciones:
 
 ```bash
-npx tsc --noEmit     # tipos
-npx expo lint        # lint
+npm run typecheck    # tipos
+npm run lint         # lint
+npm test             # self-checks de astro y visión
 npx expo-doctor      # salud del proyecto
 ```
 

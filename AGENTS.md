@@ -34,13 +34,14 @@ Lockfile is `package-lock.json` → use **npm/npx** (not bun).
 ```bash
 npx expo install <package>  # ALWAYS use instead of npm install — resolves SDK-compatible versions
 npx expo start              # dev server (test in Expo Go)
-npx tsc --noEmit            # typecheck
-npx expo lint               # lint
+npx tsc --noEmit            # typecheck  (= npm run typecheck)
+npx expo lint               # lint       (= npm run lint)
+npm test                    # self-checks of the astro/pointing/CV math (scripts/selfcheck.mjs)
 npx expo-doctor             # diagnose dependency / config issues
 npx expo install --fix      # fix incompatible package versions
 ```
 
-Run typecheck and lint before declaring any task done.
+Run typecheck and lint before declaring any task done. CI (`.github/workflows/ci.yml`) runs typecheck + lint + `npm test` + expo-doctor; CodeQL (`.github/workflows/codeql.yml`) does code scanning; Dependabot (`.github/dependabot.yml`) keeps deps/actions fresh.
 
 ## Building / distribution
 
