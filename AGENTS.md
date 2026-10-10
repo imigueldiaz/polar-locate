@@ -6,6 +6,11 @@ user — via phone sensors, the camera, and haptics — to aim a phone mounted o
 DSLR hot shoe (camera on a GTi tracker) at the celestial pole. Expo / React
 Native + TypeScript.
 
+**Docs:** the user-facing `README.md` (Spanish) documents every feature. Keep it
+up to date in the SAME change whenever you add or alter an app feature — update
+'¿Qué hace?', 'Cómo funciona', the 'Estado del proyecto' M-table, and
+'Privacidad' as applicable.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
