@@ -1,29 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RefObject } from 'react';
-import type { CameraView } from 'expo-camera';
 import { SaveFormat, manipulateAsync } from 'expo-image-manipulator';
 import { toByteArray } from 'base64-js';
-import { decode } from 'jpeg-js';
 
-import { pxPerDegFromF35 } from '../lib/astrometry';
-import { brightestBlobs, laplacianVariance, stackFrames, toGrayscale } from '../lib/detect';
+import { PolarCamera, type GrayFrame } from '../../modules/polar-camera';
+import { brightestBlobs, laplacianVariance, stackFrames } from '../lib/detect';
 import { saveFrame } from '../lib/session';
 
-const DECODE_WIDTH = 240;
-const INTERVAL_MS = 1100;
+export const DECODE_WIDTH = 240;
 const THRESHOLD = 60;
 const TOL = 0.05;
 const DEFAULT_TOL_DEG = 0.5;
 const MAX_BLOBS = 8;
-const STACK = 3; // frames averaged per tick (multi-frame stacking → better S/N)
+const STACK = 3; // frames averaged per detection (multi-frame stacking → better S/N)
 const DEFAULT_CALIB = 10; // frames averaged for the initial calibration burst
-const CAPTURE_QUALITY = 0.8; // was 0.4; hard JPEG compression erased faint stars
-const CAPTURE_TIMEOUT_MS = 8000; // a capture must settle; a hang must not pin the tick loop
+const JPEG_INTERVAL_MS = 5000; // only for the optional on-disk JPEG record
 
 export type DetPx = { x: number; y: number };
 
 export type StarTrack = {
   running: boolean;
+  frames: number;
   found: boolean;
   dx: number;
   dy: number;
@@ -34,12 +30,12 @@ export type StarTrack = {
   calibDone: number;
   calibTotal: number;
   blobs: DetPx[];
-  platePxPerDeg: number | null;
   error: string | null;
 };
 
 const IDLE: StarTrack = {
   running: false,
+  frames: 0,
   found: false,
   dx: 0,
   dy: 0,
@@ -50,43 +46,42 @@ const IDLE: StarTrack = {
   calibDone: 0,
   calibTotal: 0,
   blobs: [],
-  platePxPerDeg: null,
   error: null,
 };
 
-function focal35FromExif(exif: unknown): number | null {
-  if (!exif || typeof exif !== 'object') return null;
-  const rec = exif as Record<string, unknown>;
-  const key = Object.keys(rec).find((k) => k.toLowerCase() === 'focallengthin35mmfilm');
-  const v = key ? rec[key] : undefined;
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function timeout(ms: number): Promise<never> {
-  return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout de captura')), ms));
-}
+/** Optional: resolves the absolute path of a freshly captured JPEG, for the on-disk record. */
+export type Capture = () => Promise<string>;
 
 export function useStarTrack(
-  cameraRef: RefObject<CameraView | null>,
   enabled: boolean,
-  options: { saveFrames?: boolean; pxPerDeg?: number; tolDeg?: number; calibFrames?: number } = {},
+  options: {
+    capture?: Capture | null;
+    saveFrames?: boolean;
+    pxPerDeg?: number;
+    tolDeg?: number;
+    calibFrames?: number;
+  } = {},
 ): StarTrack {
   const [state, setState] = useState<StarTrack>(IDLE);
-  const inFlight = useRef(false);
-  const plateRef = useRef<number | null>(null);
+  const captureRef = useRef<Capture | null>(options.capture ?? null);
   const saveRef = useRef(false);
   const pxRef = useRef(0);
   const tolRef = useRef(DEFAULT_TOL_DEG);
   const calibRef = useRef(DEFAULT_CALIB);
 
   useEffect(() => {
+    captureRef.current = options.capture ?? null;
+  }, [options.capture]);
+
+  useEffect(() => {
     saveRef.current = !!options.saveFrames;
     pxRef.current = options.pxPerDeg ?? 0;
     tolRef.current = options.tolDeg && options.tolDeg > 0 ? options.tolDeg : DEFAULT_TOL_DEG;
-    calibRef.current = options.calibFrames && options.calibFrames > 0 ? options.calibFrames : DEFAULT_CALIB;
+    calibRef.current =
+      options.calibFrames && options.calibFrames > 0 ? options.calibFrames : DEFAULT_CALIB;
   }, [options.saveFrames, options.pxPerDeg, options.tolDeg, options.calibFrames]);
 
+  // Detection runs on the module's analysis frames: no still capture, no JPEG decode per tick.
   useEffect(() => {
     if (!enabled) {
       setState(IDLE);
@@ -94,57 +89,20 @@ export function useStarTrack(
     }
     let cancelled = false;
     let firstRun = true;
+    let frames = 0;
+    let w = 0;
+    let h = 0;
+    const stack: Uint8Array[] = [];
 
-    const tick = async () => {
-      if (inFlight.current) return;
-      const cam = cameraRef.current;
-      if (!cam) return;
-      inFlight.current = true;
-      const burst = firstRun ? Math.max(1, Math.round(calibRef.current)) : STACK;
+    const fail = (e: unknown) => {
+      if (!cancelled) {
+        setState((s) => ({ ...s, running: true, calibrating: false, error: String(e) }));
+      }
+    };
+
+    const analyze = (window: Uint8Array[]) => {
       try {
-        if (firstRun) {
-          setState((s) => ({ ...s, running: true, calibrating: true, calibTotal: burst, calibDone: 0 }));
-        }
-        const frames: Uint8Array[] = [];
-        let w = 0;
-        let h = 0;
-        let lastBase64: string | null = null;
-        for (let k = 0; k < burst; k++) {
-          const pic = await Promise.race([
-            cam.takePictureAsync({
-              quality: CAPTURE_QUALITY,
-              skipProcessing: false,
-              shutterSound: false,
-              exif: plateRef.current == null,
-            }),
-            timeout(CAPTURE_TIMEOUT_MS),
-          ]);
-          if (!pic?.uri) continue;
-          const small = await manipulateAsync(
-            pic.uri,
-            [{ resize: { width: DECODE_WIDTH } }],
-            { base64: true, compress: 0.8, format: SaveFormat.JPEG },
-          );
-          if (!small.base64) continue;
-          lastBase64 = small.base64;
-          if (plateRef.current == null) {
-            const f35 = focal35FromExif(pic.exif);
-            if (f35) plateRef.current = pxPerDegFromF35(f35, small.width);
-          }
-          const raw = decode(toByteArray(small.base64), {
-            useTArray: true,
-            formatAsRGBA: true,
-          });
-          const gray = toGrayscale(raw.data, raw.width, raw.height);
-          if (!frames.length) {
-            w = raw.width;
-            h = raw.height;
-          }
-          if (gray.length === w * h) frames.push(gray);
-          if (firstRun && !cancelled) setState((s) => ({ ...s, calibDone: k + 1 }));
-        }
-        if (!frames.length) throw new Error('sin captura');
-        const stacked = stackFrames(frames);
+        const stacked = stackFrames(window);
         const found = brightestBlobs(stacked, w, h, THRESHOLD, MAX_BLOBS);
         const cx = w / 2;
         const cy = h / 2;
@@ -153,17 +111,14 @@ export function useStarTrack(
         const dx = first ? first.x / cx - 1 : 0;
         const dy = first ? first.y / cy - 1 : 0;
         const focus = laplacianVariance(stacked, w, h);
-        const px = pxRef.current > 0 ? pxRef.current : plateRef.current;
+        const px = pxRef.current > 0 ? pxRef.current : null;
         const offDeg = px ? Math.hypot(dx * cx, dy * cy) / px : null;
         const locked =
           !!first && (offDeg != null ? offDeg < tolRef.current : Math.hypot(dx, dy) < TOL);
-        if (saveRef.current && lastBase64) {
-          const comment = `Polaris=${first ? 'si' : 'no'} blobs=${found.length} locked=${locked} dx=${dx.toFixed(3)} dy=${dy.toFixed(3)} t=${new Date().toISOString()}`;
-          saveFrame(lastBase64, comment);
-        }
         if (!cancelled) {
-          setState({
+          setState((prev) => ({
             running: true,
+            frames: prev.frames,
             found: !!first,
             dx,
             dy,
@@ -171,31 +126,80 @@ export function useStarTrack(
             locked,
             focus,
             calibrating: false,
-            calibDone: burst,
-            calibTotal: burst,
+            calibDone: calibRef.current,
+            calibTotal: calibRef.current,
             blobs,
-            platePxPerDeg: plateRef.current,
             error: null,
-          });
+          }));
         }
       } catch (e) {
-        if (!cancelled) {
-          setState((s) => ({ ...s, running: true, calibrating: false, error: String(e) }));
-        }
-      } finally {
-        inFlight.current = false;
-        firstRun = false;
+        fail(e);
       }
     };
 
-    setState((s) => ({ ...s, running: true }));
-    const id = setInterval(tick, INTERVAL_MS);
-    void tick();
+    const onFrame = (frame: GrayFrame) => {
+      try {
+        const size = frame.width * frame.height;
+        const gray = toByteArray(frame.gray);
+        if (!size || gray.length !== size) {
+          throw new Error(`frame ${gray.length} != ${frame.width}x${frame.height}`);
+        }
+        frames += 1;
+        w = frame.width;
+        h = frame.height;
+        if (firstRun) {
+          stack.push(gray);
+          if (!cancelled) {
+            setState((s) => ({
+              ...s,
+              running: true,
+              frames,
+              calibrating: true,
+              calibDone: stack.length,
+              calibTotal: calibRef.current,
+            }));
+          }
+          if (stack.length >= calibRef.current) {
+            firstRun = false;
+            analyze(stack.slice());
+          }
+          return;
+        }
+        stack.push(gray);
+        while (stack.length > STACK) stack.shift();
+        if (stack.length === STACK) analyze(stack.slice());
+        if (!cancelled) setState((s) => ({ ...s, frames }));
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    const saveJpeg = async () => {
+      const shoot = captureRef.current;
+      if (!saveRef.current || !shoot) return;
+      try {
+        const path = await shoot();
+        const uri = path.startsWith('file://') ? path : `file://${path}`;
+        const small = await manipulateAsync(
+          uri,
+          [{ resize: { width: DECODE_WIDTH } }],
+          { base64: true, compress: 0.8, format: SaveFormat.JPEG },
+        );
+        if (small.base64) saveFrame(small.base64, `t=${new Date().toISOString()}`);
+      } catch {
+        // recording is best-effort: it must never break detection
+      }
+    };
+
+    const sub = PolarCamera.addListener('onFrame', onFrame);
+    const jpeg = setInterval(() => void saveJpeg(), JPEG_INTERVAL_MS);
+    setState((s) => ({ ...s, running: true, frames: 0 }));
     return () => {
       cancelled = true;
-      clearInterval(id);
+      sub.remove();
+      clearInterval(jpeg);
     };
-  }, [cameraRef, enabled]);
+  }, [enabled]);
 
   return state;
 }

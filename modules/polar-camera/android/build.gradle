@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.polarcamera'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.polarcamera"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // CameraX stable line; camera-camera2 gives Camera2CameraInfo (per-lens camera id).
+  implementation "androidx.camera:camera-core:1.6.2"
+  implementation "androidx.camera:camera-camera2:1.6.2"
+  implementation "androidx.camera:camera-lifecycle:1.6.2"
+  implementation "androidx.camera:camera-view:1.6.2"
+}
