@@ -51,3 +51,6 @@ Desktop.ini
 *.lnk
 
 # NOTE: .vscode/extensions.json is committed on purpose (shared editor setup).
+
+# native build outputs of local modules
+modules/*/android/build/
