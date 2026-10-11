@@ -19,6 +19,8 @@ export default {
     star: 'Estrella',
     iso: 'ISO',
     frames: 'Frames',
+    clipped: 'Recorte',
+    tracking: 'Deriva med.',
     shutter: 'Velocidad',
     plate: 'Placa',
     focus: 'Enfoque',
@@ -69,6 +71,7 @@ export default {
     auto: 'Auto',
     manualHint: 'ISO y exposición se activan juntos: pon los dos > 0. Con la cámara encendida se aplican al momento.',
     remeasure: 'Medir de nuevo',
+    focusSweep: 'Foco',
     hint: 'Se guardan en una carpeta privada de la app; usa Compartir para exportarlas.',
   },
 };

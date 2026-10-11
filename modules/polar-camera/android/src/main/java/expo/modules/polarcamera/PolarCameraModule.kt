@@ -58,7 +58,8 @@ class PolarCameraModule : Module() {
       val iso = (settings["iso"] as? Number)?.toInt() ?: 0
       val exposureSec = (settings["exposureSec"] as? Number)?.toDouble() ?: 0.0
       val infinity = settings["infinityFocus"] as? Boolean ?: false
-      view.setManual(iso, exposureSec, infinity)
+      val focusDistance = (settings["focusDistance"] as? Number)?.toDouble() ?: -1.0
+      view.setManual(iso, exposureSec, infinity, focusDistance)
     }
   }
 

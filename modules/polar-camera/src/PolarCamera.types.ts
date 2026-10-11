@@ -45,4 +45,6 @@ export type ManualSettings = {
   exposureSec: number;
   /** Locks focus at infinity (AF off, focus distance 0). */
   infinityFocus: boolean;
+  /** Dioptres for the locked focus (0 = infinity) measured by the sweep; -1/absent keeps the toggle. */
+  focusDistance?: number;
 };

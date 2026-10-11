@@ -92,15 +92,19 @@ class PolarCameraView(
    * switched off for manual exposure); `infinityFocus` locks AF off at focus distance 0.
    */
   @OptIn(ExperimentalCamera2Interop::class)
-  fun setManual(iso: Int, exposureSec: Double, infinityFocus: Boolean) {
+  fun setManual(iso: Int, exposureSec: Double, infinityFocus: Boolean, focusDistance: Double = -1.0) {
     val control = camera?.cameraControl ?: return
     val options = CaptureRequestOptions.Builder()
-    if (infinityFocus) {
+    // focusDistance >= 0 comes from the focus sweep; -1 just honours the infinity toggle.
+    if (infinityFocus || focusDistance >= 0.0) {
       options.setCaptureRequestOption(
         CaptureRequest.CONTROL_AF_MODE,
         CaptureRequest.CONTROL_AF_MODE_OFF,
       )
-      options.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, 0f)
+      options.setCaptureRequestOption(
+        CaptureRequest.LENS_FOCUS_DISTANCE,
+        if (focusDistance >= 0.0) focusDistance.toFloat() else 0f,
+      )
     }
     if (iso > 0 && exposureSec > 0) {
       options.setCaptureRequestOption(

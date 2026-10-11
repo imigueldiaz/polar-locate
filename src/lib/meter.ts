@@ -39,6 +39,17 @@ export function frameStats(gray: Uint8Array): FrameStats {
   };
 }
 
+/** Coarse, normalised (0..1) luminance histogram for the panel strip. */
+export function histogram(gray: Uint8Array, bins = 32): number[] {
+  const out = new Array<number>(Math.max(1, bins)).fill(0);
+  if (!gray.length) return out;
+  const n = out.length;
+  for (let i = 0; i < gray.length; i += 1) out[Math.min(n - 1, (gray[i] * n) >> 8)] += 1;
+  let max = 0;
+  for (const v of out) if (v > max) max = v;
+  return max ? out.map((v) => v / max) : out;
+}
+
 /** Thirds to apply: positive = more light, negative = less. Zero inside the target band. */
 export function thirdsFor(stats: FrameStats, maxJump: number = MAX_JUMP): number {
   if (stats.clipped > MAX_CLIPPED) return -1;
@@ -152,6 +163,19 @@ export function selfCheck(): void {
     'initialSettings climbs ISO first',
   );
   console.assert(initialSettings(dark, [], sh) === null, 'initialSettings without ladders');
+
+  const hist = histogram(new Uint8Array([0, 0, 255, 255]));
+  console.assert(hist.length === 32, 'histogram bins', hist.length);
+  console.assert(hist[0] === 1 && hist[31] === 1, 'histogram edges', hist[0], hist[31]);
+  console.assert(hist[15] === 0, 'histogram empty middle', hist[15]);
+  console.assert(histogram(new Uint8Array(0)).length === 32, 'histogram empty frame');
+  console.assert(
+    histogram(new Uint8Array(4), 8)[0] === 1 &&
+      histogram(new Uint8Array(4), 8)
+        .slice(1)
+        .every((v) => v === 0),
+    'histogram flat (all mass in bin 0)',
+  );
 
   console.log('meter.selfCheck: ok');
 }

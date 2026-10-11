@@ -4,8 +4,10 @@ import { toByteArray } from 'base64-js';
 
 import { PolarCamera, type GrayFrame } from '../../modules/polar-camera';
 import { brightestBlobs, laplacianVariance, stackFrames } from '../lib/detect';
+import { pxPerDegFromLens } from '../lib/astrometry';
 import { saveFrame } from '../lib/session';
-import { frameStats, initialSettings, type FrameStats } from '../lib/meter';
+import { frameStats, histogram, initialSettings, type FrameStats } from '../lib/meter';
+import { fitSlope, type Sample, type Slope } from '../lib/drift';
 
 export const DECODE_WIDTH = 240;
 const THRESHOLD = 60;
@@ -14,6 +16,7 @@ const DEFAULT_TOL_DEG = 0.5;
 const MAX_BLOBS = 8;
 const STACK = 3; // frames averaged per detection (multi-frame stacking → better S/N)
 const DEFAULT_CALIB = 10; // frames averaged for the initial calibration burst
+const DRIFT_WINDOW_MS = 120000; // drift samples kept for the alignment assistant
 const JPEG_INTERVAL_MS = 5000; // only for the optional on-disk JPEG record
 
 export type DetPx = { x: number; y: number };
@@ -23,6 +26,14 @@ export type StarTrack = {
   frames: number;
   /** Measured ISO/shutter from the calibration frames (null until the burst finishes). */
   metered: { iso: number; exposureSec: number } | null;
+  /** Coarse normalised luminance histogram of the latest stack (null until the first analyse). */
+  hist: number[] | null;
+  /** Fraction of blown-out pixels in the latest stack, for the panel warning. */
+  clipped: number;
+  /** Px per degree of the analysis frames, from the chosen lens' optics (null if unknown). */
+  platePxPerDeg: number | null;
+  /** Measured walk of the star (px/min) over the last two minutes, for drift alignment. */
+  drift: Slope | null;
   found: boolean;
   dx: number;
   dy: number;
@@ -40,6 +51,10 @@ const IDLE: StarTrack = {
   running: false,
   frames: 0,
   metered: null,
+  hist: null,
+  clipped: 0,
+  platePxPerDeg: null,
+  drift: null,
   found: false,
   dx: 0,
   dy: 0,
@@ -66,6 +81,10 @@ export function useStarTrack(
     calibFrames?: number;
     /** Third-stop ladders of the chosen lens; when given, the calibration frames are metered. */
     ladders?: { iso: number[]; shutter: number[] } | null;
+  /** Optics of the chosen lens; with `zoom` they give the frame scale (manual `pxPerDeg` wins). */
+  optics?: { focalMm: number; sensorWidthMm: number } | null;
+  /** CameraX zoom ratio of the session, which narrows the field the frames cover. */
+  zoom?: number;
   } = {},
 ): StarTrack {
   const [state, setState] = useState<StarTrack>(IDLE);
@@ -75,6 +94,8 @@ export function useStarTrack(
   const tolRef = useRef(DEFAULT_TOL_DEG);
   const calibRef = useRef(DEFAULT_CALIB);
   const laddersRef = useRef<{ iso: number[]; shutter: number[] } | null>(options.ladders ?? null);
+  const opticsRef = useRef<{ focalMm: number; sensorWidthMm: number } | null>(options.optics ?? null);
+  const zoomRef = useRef(1);
 
   useEffect(() => {
     captureRef.current = options.capture ?? null;
@@ -87,7 +108,17 @@ export function useStarTrack(
     calibRef.current =
       options.calibFrames && options.calibFrames > 0 ? options.calibFrames : DEFAULT_CALIB;
     laddersRef.current = options.ladders ?? null;
-  }, [options.saveFrames, options.pxPerDeg, options.tolDeg, options.calibFrames, options.ladders]);
+    opticsRef.current = options.optics ?? null;
+    zoomRef.current = options.zoom && options.zoom > 0 ? options.zoom : 1;
+  }, [
+    options.saveFrames,
+    options.pxPerDeg,
+    options.tolDeg,
+    options.calibFrames,
+    options.ladders,
+    options.optics,
+    options.zoom,
+  ]);
 
   // Detection runs on the module's analysis frames: no still capture, no JPEG decode per tick.
   useEffect(() => {
@@ -98,6 +129,7 @@ export function useStarTrack(
     let w = 0;
     let h = 0;
     const stack: Uint8Array[] = [];
+    const drift: Sample[] = [];
     // One-shot exposure measurement over the calibration frames (see src/lib/meter.ts).
     let metered: { iso: number; exposureSec: number } | null = null;
     const stats: FrameStats[] = [];
@@ -111,15 +143,32 @@ export function useStarTrack(
     const analyze = (window: Uint8Array[]) => {
       try {
         const stacked = stackFrames(window);
+        // Same stack for the panel: level histogram + blown-pixel fraction.
+        const statsNow = frameStats(stacked);
+        const hist = histogram(stacked);
         const found = brightestBlobs(stacked, w, h, THRESHOLD, MAX_BLOBS);
         const cx = w / 2;
         const cy = h / 2;
         const blobs = found.map((b) => ({ x: b.x - cx, y: b.y - cy }));
         const first = found[0];
+        if (first) {
+          // Same centre-relative px the reticle uses, kept for two minutes for drift alignment.
+          drift.push({ t: Date.now(), x: first.x - cx, y: first.y - cy });
+          const cutoff = Date.now() - DRIFT_WINDOW_MS;
+          while (drift.length && drift[0].t < cutoff) drift.shift();
+        }
         const dx = first ? first.x / cx - 1 : 0;
         const dy = first ? first.y / cy - 1 : 0;
         const focus = laplacianVariance(stacked, w, h);
-        const px = pxRef.current > 0 ? pxRef.current : null;
+        // Scale of this frame: the manual pref wins, else the optics at the frame's real width
+        // (the analysis stream is a different size from the old JPEG decode and is zoomed too).
+        const optics = opticsRef.current;
+        const px =
+          pxRef.current > 0
+            ? pxRef.current
+            : optics && optics.focalMm > 0 && optics.sensorWidthMm > 0
+              ? pxPerDegFromLens(optics.focalMm, optics.sensorWidthMm, w) * zoomRef.current
+              : null;
         const offDeg = px ? Math.hypot(dx * cx, dy * cy) / px : null;
         const locked =
           !!first && (offDeg != null ? offDeg < tolRef.current : Math.hypot(dx, dy) < TOL);
@@ -128,6 +177,10 @@ export function useStarTrack(
             running: true,
             frames: prev.frames,
             metered,
+            hist,
+            clipped: statsNow.clipped,
+            platePxPerDeg: px,
+            drift: fitSlope(drift),
             found: !!first,
             dx,
             dy,

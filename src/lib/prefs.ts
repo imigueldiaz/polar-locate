@@ -7,6 +7,8 @@ export type Prefs = {
   gtiReticle: boolean;
   lensId: string;
   infinityFocus: boolean;
+  /** Focus distance in dioptres measured by the sweep (-1 = not measured). */
+  focusDistance: number;
   iso: number;
   exposureSec: number;
   /** True when iso/exposureSec came from the initial metering (shown as `Auto (n)`). */
@@ -23,6 +25,7 @@ export const DEFAULT_PREFS: Prefs = {
   gtiReticle: true,
   lensId: '',
   infinityFocus: false,
+  focusDistance: -1,
   iso: 0,
   exposureSec: 0,
   metered: false,

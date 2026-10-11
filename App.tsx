@@ -9,12 +9,13 @@ import * as KeepAwake from 'expo-keep-awake';
 import * as Brightness from 'expo-brightness';
 
 import { OptionsPanel } from './src/components/OptionsPanel';
+import { Histogram } from './src/components/Histogram';
 import { Reticle, type Offset } from './src/components/Reticle';
 import { usePointing } from './src/hooks/usePointing';
 import { usePrefs } from './src/hooks/usePrefs';
-import { DECODE_WIDTH, useStarTrack } from './src/hooks/useStarTrack';
-import { pxPerDegFromLens } from './src/lib/astrometry';
+import { useStarTrack } from './src/hooks/useStarTrack';
 import { formatShutter, isoStops, shutterStops } from './src/lib/stops';
+import { arcminPerMin, arrow, screwFor } from './src/lib/drift';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
 import { computeSky, darkness, polarisHourAngle } from './src/lib/astro';
@@ -27,6 +28,7 @@ type Coords = { lat: number; lon: number; acc: number };
 type Perm = 'unknown' | 'granted' | 'denied';
 
 const RETICLE = 300;
+const HIST_W = 240;
 const RETICLE_R = RETICLE / 2 - 8;
 const FOV_RADIUS_DEG = 5;
 const PX_PER_DEG = RETICLE_R / FOV_RADIUS_DEG;
@@ -95,34 +97,33 @@ export default function App() {
       iso: prefs.iso,
       exposureSec: prefs.exposureSec,
       infinityFocus: prefs.infinityFocus,
+      focusDistance: prefs.focusDistance,
     }).catch(() => undefined);
-  }, [cameraOn, cameraPerm, prefs.iso, prefs.exposureSec, prefs.infinityFocus]);
+  }, [
+    cameraOn,
+    cameraPerm,
+    prefs.iso,
+    prefs.exposureSec,
+    prefs.infinityFocus,
+    prefs.focusDistance,
+  ]);
 
-  // Plate-scale seed from the real optics of the chosen lens (manual pref wins). The astrometry
-  // fit replaces it as soon as a match succeeds, so this only settles the cold start.
   const lens = lenses.find((l) => l.id === prefs.lensId) ?? lenses.find((l) => l.facing === 'back');
   // Third-stop ladders of that lens: the initial metering picks a pair from them.
   const isoLadder = isoStops(lens?.isoRange[0] ?? 0, lens?.isoRange[1] ?? 0);
   const shutterLadder = shutterStops(lens?.exposureTimeRangeNs[0] ?? 0, lens?.exposureTimeRangeNs[1] ?? 0);
-  const lensPxPerDeg = pxPerDegFromLens(
-    lens?.focalLengths[0] ?? 0,
-    lens?.sensorWidthMm ?? 0,
-    DECODE_WIDTH,
-  );
-  // Zoom narrows the field, so the capture scale grows with the CameraX zoom ratio.
-  const pxPerDeg =
-    prefs.pxPerDeg > 0
-      ? prefs.pxPerDeg
-      : Number.isFinite(lensPxPerDeg) && lensPxPerDeg > 0
-        ? lensPxPerDeg * (1 + zoom * 7)
-        : null;
+  // The capture scale is derived in the hook from each frame's real width (`optics` + `zoom`),
+  // not from the old JPEG decode width: the analysis stream has its own size and is zoomed too.
+  const zoomRatio = 1 + zoom * 7;
 
   const capture = useCallback(() => PolarCamera.takePictureAsync(), []);
 
   const starTrack = useStarTrack(searching && cameraOn && cameraPerm, {
     capture,
     saveFrames: prefs.saveJpegs,
-    pxPerDeg: pxPerDeg ?? 0,
+    pxPerDeg: prefs.pxPerDeg,
+    optics: { focalMm: lens?.focalLengths[0] ?? 0, sensorWidthMm: lens?.sensorWidthMm ?? 0 },
+    zoom: zoomRatio,
     tolDeg: prefs.tolDeg,
     calibFrames: prefs.calibFrames,
     ladders: { iso: isoLadder, shutter: shutterLadder },
@@ -135,6 +136,51 @@ export default function App() {
       update({ iso: m.iso, exposureSec: m.exposureSec, metered: true });
     }
   }, [starTrack.metered, prefs.iso, prefs.exposureSec, update]);
+
+  // Sharpness of the latest stack, read by the sweep without re-rendering per frame.
+  const focusRef = useRef(0);
+  useEffect(() => {
+    focusRef.current = starTrack.focus;
+  }, [starTrack.focus]);
+
+  // Focus sweep: walk LENS_FOCUS_DISTANCE and keep the distance whose frames are sharpest.
+  const sweepingRef = useRef(false);
+  const [sweeping, setSweeping] = useState(false);
+  const measureFocus = useCallback(async () => {
+    if (!searching || !cameraOn || !cameraPerm || sweepingRef.current) return;
+    sweepingRef.current = true;
+    setSweeping(true);
+    try {
+      let best = -1;
+      let bestScore = 0;
+      for (let d = 0; d <= 1.0001; d += 0.05) {
+        await PolarCamera.setManualAsync({
+          iso: prefs.iso,
+          exposureSec: prefs.exposureSec,
+          infinityFocus: prefs.infinityFocus,
+          focusDistance: d,
+        });
+        await new Promise((r) => setTimeout(r, 500));
+        const score = focusRef.current;
+        if (score > bestScore) {
+          bestScore = score;
+          best = d;
+        }
+      }
+      update({ focusDistance: best });
+    } finally {
+      sweepingRef.current = false;
+      setSweeping(false);
+    }
+  }, [
+    searching,
+    cameraOn,
+    cameraPerm,
+    prefs.iso,
+    prefs.exposureSec,
+    prefs.infinityFocus,
+    update,
+  ]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -194,7 +240,7 @@ export default function App() {
     lat: coords?.lat ?? null,
     lstHours: sky?.lstHours ?? null,
     date: now,
-    pxPerDeg0: pxPerDeg,
+    pxPerDeg0: starTrack.platePxPerDeg,
   });
   const attUse = astro.correctedAtt ?? att;
   const poleAlt = sky ? sky.poleAlt : null;
@@ -374,8 +420,18 @@ export default function App() {
   // No `~` means the astrometry fit measured it; `~` is still the geometric seed.
   const plateValue = astro.fix
     ? `${astro.fix.pxPerDeg.toFixed(1)}/°`
-    : pxPerDeg
-      ? `~${pxPerDeg.toFixed(1)}/°`
+    : starTrack.platePxPerDeg
+      ? `~${starTrack.platePxPerDeg.toFixed(1)}/°`
+      : dash;
+  // Measured walk of the star and which screw reacts to it (classic drift alignment).
+  const drift = starTrack.drift;
+  const driftRate =
+    drift && starTrack.platePxPerDeg ? arcminPerMin(drift, starTrack.platePxPerDeg) : null;
+  const driftValue =
+    drift && driftRate != null
+      ? `${driftRate.toFixed(1)}′/min ${arrow(drift)}${
+          attUse ? (screwFor(attUse.az) === 'altitude' ? ' · alt' : ' · az') : ''
+        }`
       : dash;
 
   return (
@@ -456,6 +512,15 @@ export default function App() {
         />
         <Row label={t('readout.frames')} value={String(starTrack.frames)} />
         <Row
+          label={t('readout.clipped')}
+          value={starTrack.running ? `${(starTrack.clipped * 100).toFixed(1)}%` : dash}
+        />
+        {starTrack.hist ? (
+          <View style={styles.histWrap}>
+            <Histogram bins={starTrack.hist} width={HIST_W} height={26} />
+          </View>
+        ) : null}
+        <Row
           label={t('readout.shutter')}
           value={
             prefs.exposureSec > 0
@@ -486,6 +551,7 @@ export default function App() {
               : dash
           }
         />
+        <Row label={t('readout.tracking')} value={driftValue} />
         <Row
           label={t('readout.visibleFrom')}
           value={dark?.from ? formatClock(dark.from) : dash}
@@ -533,6 +599,20 @@ export default function App() {
               onPress={() => setZoom((z) => Math.min(1, +(z + 0.05).toFixed(2)))}
             >
               <Text style={styles.zoomBtnText}>+</Text>
+            </Pressable>
+            {[1, 3, 5].map((r) => (
+              <Pressable
+                key={r}
+                style={styles.zoomPreset}
+                onPress={() => setZoom(+((r - 1) / 7).toFixed(2))}
+              >
+                <Text style={styles.zoomPresetText}>{`${r}×`}</Text>
+              </Pressable>
+            ))}
+            <Pressable style={styles.zoomPreset} onPress={() => void measureFocus()}>
+              <Text style={styles.zoomPresetText}>
+                {sweeping ? '…' : t('options.focusSweep')}
+              </Text>
             </Pressable>
           </View>
         )}
@@ -626,6 +706,10 @@ const styles = StyleSheet.create({
   rowWide: {
     width: '100%',
   },
+  histWrap: {
+    width: '100%',
+    marginTop: 3,
+  },
   rowLabel: {
     color: theme.colors.textDim,
     fontFamily: theme.mono,
@@ -691,6 +775,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     minWidth: 48,
     textAlign: 'center',
+  },
+  zoomPreset: {
+    borderColor: theme.colors.redDim,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: theme.space(1),
+    paddingVertical: theme.space(0.5),
+  },
+  zoomPresetText: {
+    color: theme.colors.text,
+    fontFamily: theme.mono,
+    fontSize: 12,
   },
   grant: {
     position: 'absolute',
