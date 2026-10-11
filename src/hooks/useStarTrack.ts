@@ -18,6 +18,7 @@ const MAX_BLOBS = 8;
 const STACK = 3; // frames averaged per tick (multi-frame stacking → better S/N)
 const DEFAULT_CALIB = 10; // frames averaged for the initial calibration burst
 const CAPTURE_QUALITY = 0.8; // was 0.4; hard JPEG compression erased faint stars
+const CAPTURE_TIMEOUT_MS = 8000; // a capture must settle; a hang must not pin the tick loop
 
 export type DetPx = { x: number; y: number };
 
@@ -60,6 +61,10 @@ function focal35FromExif(exif: unknown): number | null {
   const v = key ? rec[key] : undefined;
   const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN;
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function timeout(ms: number): Promise<never> {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout de captura')), ms));
 }
 
 export function useStarTrack(
@@ -105,12 +110,15 @@ export function useStarTrack(
         let h = 0;
         let lastBase64: string | null = null;
         for (let k = 0; k < burst; k++) {
-          const pic = await cam.takePictureAsync({
-            quality: CAPTURE_QUALITY,
-            skipProcessing: false,
-            shutterSound: false,
-            exif: plateRef.current == null,
-          });
+          const pic = await Promise.race([
+            cam.takePictureAsync({
+              quality: CAPTURE_QUALITY,
+              skipProcessing: false,
+              shutterSound: false,
+              exif: plateRef.current == null,
+            }),
+            timeout(CAPTURE_TIMEOUT_MS),
+          ]);
           if (!pic?.uri) continue;
           const small = await manipulateAsync(
             pic.uri,

@@ -20,6 +20,7 @@ export default {
     focus: 'Enfoque',
     hourAngle: 'Hora polar',
     astro: 'Astrometría',
+    capture: 'Captura',
     drift: 'Deriva Polar',
     visibleFrom: 'Visible desde',
   },

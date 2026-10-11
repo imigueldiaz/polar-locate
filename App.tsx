@@ -50,6 +50,7 @@ export default function App() {
   const [coords, setCoords] = useState<Coords | null>(null);
   const [perm, setPerm] = useState<Perm>('unknown');
   const [cameraOn, setCameraOn] = useState(false);
+  const [camReady, setCamReady] = useState(false);
   const [zoom, setZoom] = useState(0);
   const [searching, setSearching] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
@@ -58,7 +59,8 @@ export default function App() {
   const [cameraPerm, requestCamera] = useCameraPermissions();
   const camRef = useRef<CameraView>(null);
   const pointing = usePointing();
-  const starTrack = useStarTrack(camRef, cameraOn && !!cameraPerm?.granted, {
+  // capture must wait for onCameraReady; calling takePictureAsync earlier never settles
+  const starTrack = useStarTrack(camRef, cameraOn && !!cameraPerm?.granted && camReady, {
     saveFrames: prefs.saveJpegs,
     pxPerDeg: prefs.pxPerDeg,
     tolDeg: prefs.tolDeg,
@@ -92,6 +94,7 @@ export default function App() {
   const toggleCamera = useCallback(async () => {
     if (cameraOn) {
       setCameraOn(false);
+      setCamReady(false);
       return;
     }
     if (!cameraPerm?.granted) {
@@ -317,6 +320,7 @@ export default function App() {
             zoom={zoom}
             autofocus={prefs.afLock ? 'on' : 'off'}
             active
+            onCameraReady={() => setCamReady(true)}
           />
           <View style={styles.cameraDim} />
         </View>
@@ -368,6 +372,7 @@ export default function App() {
           label={t('readout.focus')}
           value={starTrack.running ? String(Math.round(starTrack.focus)) : dash}
         />
+        {starTrack.error ? <Row label={t('readout.capture')} value={starTrack.error} /> : null}
         <Row
           label={t('readout.astro')}
           value={
