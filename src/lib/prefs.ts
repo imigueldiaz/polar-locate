@@ -28,6 +28,10 @@ export type Prefs = {
   tolDeg: number;
   calibFrames: number;
   sky: SkyCache | null;
+  /** Star-name labels on the reticle: none, the brightest few, or every named star in the field. */
+  labels: 'off' | 'few' | 'all';
+  /** Save one full-quality JPEG the first time astrometry solves (comment = solution + names). */
+  saveFix: boolean;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -45,6 +49,8 @@ export const DEFAULT_PREFS: Prefs = {
   tolDeg: 0.5,
   calibFrames: 10,
   sky: null,
+  labels: 'few',
+  saveFix: true,
 };
 
 export function loadPrefs(): Prefs {

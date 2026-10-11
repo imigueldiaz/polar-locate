@@ -10,6 +10,8 @@ export const theme = {
     textDim: '#8a3a3f',
     on: '#ff2b3a',
     off: '#4a0a10',
+    // Dim on purpose: star labels must not hurt dark adaptation.
+    green: '#37734a',
   },
   mono: 'monospace',
   space: (n: number) => n * 8,

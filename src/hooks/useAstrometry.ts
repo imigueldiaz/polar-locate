@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { solvePointing, type DetPx, type Fix } from '../lib/astrometry';
+import { NAMES } from '../lib/catalog';
 import { ofDateCatalog, predictField } from '../lib/field';
 import { skyToScreen, type Attitude } from '../lib/pointing';
 
@@ -13,7 +14,8 @@ const TOL_MATCH = 2.5;
 export type AstroResult = {
   fix: Fix | null;
   correctedAtt: Attitude | null;
-  predictedPx: { x: number; y: number }[];
+  /** Predicted stars in screen px, with their catalog label ('' when unnamed). */
+  predictedPx: { x: number; y: number; name: string; mag: number }[];
 };
 
 const EMPTY: AstroResult = { fix: null, correctedAtt: null, predictedPx: [] };
@@ -62,9 +64,11 @@ export function useAstrometry(params: AstroParams): AstroResult {
       roll: att.roll,
     };
     const cosA = Math.cos(att.alt * D2R);
-    const predictedPx = pred.map((s) =>
-      skyToScreen(s.e - fix.azCorr * cosA, s.u - fix.altCorr, att.roll, fix.pxPerDeg),
-    );
+    const predictedPx = pred.map((s) => ({
+      ...skyToScreen(s.e - fix.azCorr * cosA, s.u - fix.altCorr, att.roll, fix.pxPerDeg),
+      name: s.index != null ? (NAMES[s.index] ?? '') : '',
+      mag: s.mag,
+    }));
     setRes({ fix, correctedAtt, predictedPx });
   }, [enabled, blobs]);
 

@@ -18,7 +18,7 @@ function skyToScreen(
   return { x: sx * pxPerDeg, y: -sy * pxPerDeg };
 }
 
-export type SkyStar = { e: number; u: number; mag: number };
+export type SkyStar = { e: number; u: number; mag: number; index?: number };
 export type DetPx = { x: number; y: number };
 export type Fix = {
   azCorr: number;

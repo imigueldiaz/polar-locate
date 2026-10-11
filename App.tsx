@@ -8,6 +8,8 @@ import * as Sharing from 'expo-sharing';
 import * as KeepAwake from 'expo-keep-awake';
 import * as Brightness from 'expo-brightness';
 
+import { SaveFormat, manipulateAsync } from 'expo-image-manipulator';
+
 import { OptionsPanel } from './src/components/OptionsPanel';
 import { Histogram } from './src/components/Histogram';
 import { fetchSky } from './src/lib/radiance';
@@ -22,7 +24,7 @@ import { t } from './src/i18n';
 import { computeSky, darkness, polarisHourAngle } from './src/lib/astro';
 import { formatAngle, formatClock, formatHours, formatLatLon } from './src/lib/format';
 import { errorToPole, skyToScreen } from './src/lib/pointing';
-import { appendTrace, traceUri } from './src/lib/session';
+import { appendTrace, saveFrame, traceUri } from './src/lib/session';
 import { theme } from './src/theme';
 
 type Coords = { lat: number; lon: number; acc: number };
@@ -470,6 +472,45 @@ export default function App() {
 
   const hourAngle = sky ? polarisHourAngle(sky.lstHours) : null;
 
+  // Star names painted on the reticle: the brightest few by default, all named stars on request.
+  const fieldStars = useMemo(() => {
+    if (prefs.labels === 'off') return null;
+    const named = astro.predictedPx.filter((s) => s.name);
+    if (!named.length) return null;
+    return prefs.labels === 'all' ? named : [...named].sort((a, b) => a.mag - b.mag).slice(0, 10);
+  }, [astro.predictedPx, prefs.labels]);
+
+  // One full-quality JPEG the first time astrometry solves, with the solution and the field's
+  // star names written into the file's comment (best effort: it must never break the session).
+  const fixSavedRef = useRef(false);
+  useEffect(() => {
+    const f = astro.fix;
+    if (!f || fixSavedRef.current || !prefs.saveFix || !cameraOn || !cameraPerm) return;
+    fixSavedRef.current = true;
+    void (async () => {
+      try {
+        const path = await PolarCamera.takePictureAsync();
+        const uri = path.startsWith('file://') ? path : `file://${path}`;
+        const shot = await manipulateAsync(uri, [], {
+          base64: true,
+          compress: 1,
+          format: SaveFormat.JPEG,
+        });
+        if (!shot.base64) return;
+        const names = astro.predictedPx
+          .filter((s) => s.name)
+          .map((s) => s.name)
+          .join(', ');
+        saveFrame(
+          shot.base64,
+          `astrometria px/deg=${f.pxPerDeg.toFixed(2)} matches=${f.matches} az=${f.azCorr.toFixed(3)} alt=${f.altCorr.toFixed(3)} estrellas: ${names}`,
+        );
+      } catch {
+        return;
+      }
+    })();
+  }, [astro.fix, astro.predictedPx, prefs.saveFix, cameraOn, cameraPerm]);
+
   const dash = t('common.none');
   // Manual camera state at a glance; the full controls live in Opciones.
   const lensValue = prefs.lensId
@@ -633,7 +674,7 @@ export default function App() {
           aligned={alignedNow}
           star={starScreen}
           starLocked={starTrack.locked}
-          field={astro.predictedPx.length ? astro.predictedPx : null}
+          field={fieldStars}
           gti={prefs.gtiReticle}
           degToPx={PX_PER_DEG}
         />

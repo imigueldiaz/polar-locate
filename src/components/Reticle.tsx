@@ -5,6 +5,9 @@ import { theme } from '../theme';
 
 export type Offset = { x: number; y: number };
 
+/** A predicted catalog star: screen offset plus its label ('' when the catalog has no name). */
+export type FieldStar = Offset & { name?: string; mag?: number };
+
 type Props = {
   size: number;
   roll: number;
@@ -13,7 +16,7 @@ type Props = {
   aligned: boolean;
   star?: Offset | null;
   starLocked?: boolean;
-  field?: Offset[] | null;
+  field?: FieldStar[] | null;
   gti?: boolean;
   degToPx?: number;
 };
@@ -168,7 +171,20 @@ export function Reticle({
       />
 
       {field?.map((f, i) => (
-        <Circle key={i} cx={c + f.x} cy={c + f.y} r={1.5} fill={theme.colors.textDim} />
+        <G key={i}>
+          <Circle cx={c + f.x} cy={c + f.y} r={1.5} fill={theme.colors.textDim} />
+          {f.name ? (
+            <SvgText
+              x={c + f.x + 4}
+              y={c + f.y - 3}
+              fill={theme.colors.green}
+              fontSize={9}
+              fontFamily={theme.mono}
+            >
+              {f.name}
+            </SvgText>
+          ) : null}
+        </G>
       ))}
 
       {star && (

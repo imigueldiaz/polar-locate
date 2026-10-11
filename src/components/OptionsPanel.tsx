@@ -176,6 +176,28 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
           value={prefs.infinityFocus}
           onValueChange={(v) => onChange({ infinityFocus: v })}
         />
+        <Text style={styles.section}>{t('options.names')}</Text>
+        <View style={styles.chips}>
+          {(['off', 'few', 'all'] as const).map((v) => (
+            <Chip
+              key={v}
+              label={t(
+                v === 'off'
+                  ? 'options.namesOff'
+                  : v === 'few'
+                    ? 'options.namesFew'
+                    : 'options.namesAll',
+              )}
+              on={prefs.labels === v}
+              onPress={() => onChange({ labels: v })}
+            />
+          ))}
+        </View>
+        <Toggle
+          label={t('options.saveFix')}
+          value={prefs.saveFix}
+          onValueChange={(v) => onChange({ saveFix: v })}
+        />
         <Text style={styles.section}>{t('options.advanced')}</Text>
         <StopPicker
           label={t('options.iso')}

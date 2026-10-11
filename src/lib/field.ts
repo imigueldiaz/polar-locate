@@ -59,7 +59,8 @@ export function predictField(
     if (mag > magLimit) continue;
     const { az, alt } = altAzOf(ofDate[i], ofDate[i + 1], latDeg, lstHours);
     const o = skyOffset(az, alt, attAz, attAlt);
-    if (o.e * o.e + o.u * o.u <= m2) res.push({ e: o.e, u: o.u, mag });
+    // The catalog index rides along so callers can look the star's name up in NAMES[].
+    if (o.e * o.e + o.u * o.u <= m2) res.push({ e: o.e, u: o.u, mag, index: i / 3 });
   }
   return res;
 }
