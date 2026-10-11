@@ -83,10 +83,7 @@ export function useStarTrack(
 
   // Detection runs on the module's analysis frames: no still capture, no JPEG decode per tick.
   useEffect(() => {
-    if (!enabled) {
-      setState(IDLE);
-      return;
-    }
+    if (!enabled) return;
     let cancelled = false;
     let firstRun = true;
     let frames = 0;
@@ -201,5 +198,6 @@ export function useStarTrack(
     };
   }, [enabled]);
 
-  return state;
+  // IDLE while disabled, so consumers never see frames from a previous run.
+  return enabled ? state : IDLE;
 }
