@@ -27,9 +27,9 @@ Expo ships breaking changes every SDK release. APIs you remember are likely rena
 - Astronomy math lives in `src/lib/astro.ts` (`astronomy-engine`, pure JS): `computeSky()` (Polaris alt/az, true pole, drift + position angle, LST) and `darkness()` (astronomical twilight window).
 - Pointing math lives in `src/lib/pointing.ts` (pure): `attitude()` derives camera az/alt + screen roll from accelerometer (`-g` = up) + magnetometer; plus `errorToPole()` and `skyToScreen()`. `selfCheck()` is assert-based — run it with `node --input-type=module -e "import('./src/lib/pointing.ts').then(m=>m.selfCheck())"`.
 - `src/hooks/usePointing.ts` subscribes `expo-sensors` Accelerometer + Magnetometer (EMA-smoothed); `src/components/Reticle.tsx` draws the SVG reticle rotated by roll. `expo-haptics` ticks encode the correction direction.
-- Live camera overlay uses `expo-camera` `CameraView` (`facing:"back"`, `zoom` 0–1, `active`) rendered behind the reticle; digital zoom only (Android can't pick a physical lens with `expo-camera`).
-- Star CV (M4) runs in **Expo Go via still-image polling**, NOT VisionCamera frame processors (those need a dev build and risk SDK 57 / RN 0.86 New-Arch). `src/hooks/useStarTrack.ts` every ~1.1 s: `takePictureAsync` → `expo-image-manipulator` resize to 240 px + `base64` → `base64-js` → `jpeg-js.decode(bytes,{useTArray:true,formatAsRGBA:true})` → `src/lib/detect.ts` `brightestBlob()` → offset from centre drives haptics + a screen dot + tolerance lock. VisionCamera is the real-time upgrade path.
-- Astrometry (M4.5): `src/lib/astrometry.ts` `solvePointing()` does a local ICP match of detected blobs vs predicted catalog stars → Δaz/Δalt + true plate scale, removing the magnetometer dependence; `src/lib/field.ts` `ofDateCatalog()` precesses J2000→of-date via astronomy-engine `Rotation_EQJ_EQD` and `predictField()` filters to the FOV; `src/hooks/useAstrometry.ts` runs once per camera tick. Corrected attitude overrides sensor azimuth, and predicted stars render through `Reticle`'s `field` prop. `src/lib/catalog.ts` is generated (HYG v4.1, mag≤6.5, 8920 stars, ~189 KB, CC BY-SA) — regenerate with `node scripts/build-catalog.mjs`. `useStarTrack` reads EXIF `FocalLengthIn35mmFilm` once to seed the plate scale (`astrometry.pxPerDegFromF35`), falling back to a default.
+- Live camera overlay uses the local native module `modules/polar-camera` (CameraX `PreviewView` via `PolarCameraView`) rendered behind the reticle: `listLensesAsync()` enumerates cameras (id, facing, focal lengths, ISO range, exposure range, min focus distance), `takePictureAsync()` resolves a JPEG path in the app cache, `lensId` selects a camera by Camera2 id and `zoom` is a CameraX ratio (1–8). Digital zoom only.
+- Star CV (M4) runs on **real-time analysis frames** from the module (`ImageAnalysis` + `STRATEGY_KEEP_ONLY_LATEST`, ~5 fps, grayscale ≤320 px, emitted as base64 `onFrame` events): `src/hooks/useStarTrack.ts` uses the first `calibFrames` frames as the calibration burst and then a rolling `STACK`-frame average into `src/lib/detect.ts` `brightestBlobs()` → offset from centre drives haptics + a screen dot + tolerance lock. The optional JPEG record (`saveFrames`) still uses `PolarCamera.takePictureAsync()` + `expo-image-manipulator`; the per-tick `jpeg-js` decode is gone.
+- Astrometry (M4.5): `src/lib/astrometry.ts` `solvePointing()` does a local ICP match of detected blobs vs predicted catalog stars → Δaz/Δalt + true plate scale, removing the magnetometer dependence; `src/lib/field.ts` `ofDateCatalog()` precesses J2000→of-date via astronomy-engine `Rotation_EQJ_EQD` and `predictField()` filters to the FOV; `src/hooks/useAstrometry.ts` runs once per camera tick. Corrected attitude overrides sensor azimuth, and predicted stars render through `Reticle`'s `field` prop. `src/lib/catalog.ts` is generated (HYG v4.1, mag≤6.5, 8920 stars, ~189 KB, CC BY-SA) — regenerate with `node scripts/build-catalog.mjs`. The plate scale starts from the `pxPerDeg` pref (0 = auto) and is replaced by the astrometry fit; the old EXIF seed is gone (the native module returns no EXIF).
 - Caveat: azimuth comes from the magnetometer → unreliable near the mount/metal. Roll + altitude (gravity-only) are reliable; the M4 star CV adds visual centring that bypasses the magnetometer.
 
 ## Commands
@@ -44,9 +44,46 @@ npx expo lint               # lint       (= npm run lint)
 npm test                    # self-checks of the astro/pointing/CV math (scripts/selfcheck.mjs)
 npx expo-doctor             # diagnose dependency / config issues
 npx expo install --fix      # fix incompatible package versions
+
+npx expo prebuild -p android        # (re)generate android/ (CNG, gitignored) after config/module changes
+npm run android                     # expo run:android — native build + install on the device over adb
 ```
 
+For the local Gradle build, `JAVA_HOME` and `ANDROID_HOME` must be exported in the shell (see **Native toolchain**).
+
 Run typecheck and lint before declaring any task done. CI (`.github/workflows/ci.yml`) runs typecheck + lint + `npm test` + expo-doctor; CodeQL (`.github/workflows/codeql.yml`) does code scanning; Dependabot (`.github/dependabot.yml`) keeps deps/actions fresh; `release.yml` builds the APK with EAS and attaches it to a GitHub Release on `v*` tags (needs the `EXPO_TOKEN` Actions secret). The tag **must start with `v`** (`v1.0.1`, not `1.0.1`) or it won't trigger; publish with `git tag -s v1.0.1 -m "Release v1.0.1" && git push origin v1.0.1` (or Actions → Run workflow).
+
+## Native toolchain (local Android builds)
+
+Only needed to build or patch the native side locally (a custom module under `modules/`, `android/` tuning). The cloud EAS build needs none of it. Installed **per-user** here (no admin, no Android Studio):
+
+| Piece | Version | Location |
+|---|---|---|
+| JDK (Temurin, LTS) | 17.0.20.1+1 | `%LOCALAPPDATA%\jdk\jdk-17.0.20.1+1` → `JAVA_HOME` |
+| cmdline-tools (`sdkmanager`) | 13114758 | `%LOCALAPPDATA%\Android\Sdk\cmdline-tools\latest` → `ANDROID_HOME` / `ANDROID_SDK_ROOT` |
+| platform-tools (`adb`) | 37.0.1 | SDK root |
+| platforms / build-tools | android-36 / 36.0.0 | SDK root |
+| NDK / cmake | 27.1.12297006 / 3.22.1 | SDK root |
+
+Version source of truth is `node_modules/react-native/gradle/libs.versions.toml` (RN 0.86.3): `minSdk 24`, `compileSdk`/`targetSdk 36`, `buildTools 36.0.0`, `ndkVersion 27.1.12297006`, AGP 8.12, Kotlin 2.1.20. Install/add packages with matching pins (`sdkmanager` needs `JAVA_HOME`; run from git-bash with `cmd //c`):
+
+```bash
+cd "$LOCALAPPDATA/Android/Sdk/cmdline-tools/latest/bin"
+export JAVA_HOME="C:/Users/imigu/AppData/Local/jdk/jdk-17.0.20.1+1"
+cmd //c sdkmanager.bat "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1" "platform-tools"
+yes | cmd //c sdkmanager.bat --licenses
+```
+
+Local build (git-bash: `cmd //c` because `gradlew.bat` is a batch file; `setx` only affects **new** shells, so export inline):
+
+```bash
+cd android
+export JAVA_HOME="C:/Users/imigu/AppData/Local/jdk/jdk-17.0.20.1+1"
+export ANDROID_HOME="C:/Users/imigu/AppData/Local/Android/Sdk"
+cmd //c gradlew.bat :app:assembleDebug --console=plain   # → android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+First (cold) build ≈ 8 min (Gradle distribution + Maven deps + NDK/cmake C++ + Kotlin); later builds are incremental. Replacing the ~7-min cloud loop with this is the point.
 
 ## Building / distribution
 
@@ -63,7 +100,8 @@ Run typecheck and lint before declaring any task done. CI (`.github/workflows/ci
 
 ## Environment gotchas
 
-- **Expo Go** runs the bundled native modules only. `expo-location`, `expo-sensors`, `expo-camera`, `expo-haptics`, `expo-localization`, `react-native-svg` all work in Expo Go.
-- The whole app runs in **Expo Go** (location, sensors, camera, haptics, i18n, svg, and the M4/M4.5 CV + astrometry still-image pipeline). A real-time `react-native-vision-camera` upgrade, or a native camera-calibration module, would need a **development build** (`eas build --profile development`, after `npx expo install expo-dev-client`).
-- On Android, `expo-camera` cannot select a physical lens (only `facing` + `zoom`); telephoto selection needs `react-native-vision-camera` (`getAvailableCameraDevices().physicalDevices`).
+- **No Expo Go any more.** Since the camera moved into `modules/polar-camera` (a local native module), the app runs only in a **development build** / APK: `npm run android` (`expo run:android`) with the phone on USB, or `eas build --profile development`. Expo Go loads bundled modules only, and `polar-camera` is not one.
+- The app runs in a **development build / APK**, not Expo Go: `npm run android` (`expo run:android`) builds and installs it on the phone; for JS-only iteration run `npx expo start` and open the installed app. EAS dev-client builds additionally need `npx expo install expo-dev-client` first `eas build --profile development`.
+- Android gives no manual camera control through stock JS camera libraries: `expo-camera` cannot select a physical lens (only `facing` + `zoom`), and `react-native-vision-camera@5.2.3` **throws** on Android for manual exposure/focus/WB locks (`setExposureLocked`/`setFocusLocked`/`setWhiteBalanceLocked` are iOS-only there; their getters return a hardcoded `0.0`) — only `setExposureBias` and AE/AF/AWB metering locks work. Hence the own module: `modules/polar-camera` over CameraX, with Camera2 (`Camera2CameraControl`) for the manual keys (`getPhysicalCameraIds`, `SENSOR_SENSITIVITY`, `SENSOR_EXPOSURE_TIME`, `LENS_FOCUS_DISTANCE=0`, `CONTROL_AF_MODE_OFF`).
+- `expo-camera` is **gone** (removed from `package.json` + `app.json` plugins); the camera lives only in `modules/polar-camera`, so **every camera change needs a native rebuild** (`npx expo prebuild -p android` after config/module changes, then `npm run android`). JS-only changes still go out over OTA.
 - Never create or edit `ios/` / `android/` by hand — they are generated (CNG). Configure native behavior in `app.json` and config plugins.

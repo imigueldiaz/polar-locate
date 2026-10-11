@@ -53,8 +53,9 @@ sube nada a ningún sitio.
 - **Guía háptica**: vibraciones cortas codifican hacia dónde mover (subir/bajar
   o girar a un lado/otro); se vuelven finas cuando estás cerca.
 - **Cámara en vivo** superpuesta bajo el retículo, con zoom digital.
-- **Visión por computador**: cada ~1 s captura una imagen, detecta la estrella y
-  marca su desviación respecto al centro; al centrarla, avisa y **bloquea**.
+- **Visión por computador**: los frames de análisis llegan en **tiempo real** (~5/s, en gris)
+  desde el módulo nativo; se apilan y se detecta la estrella más brillante, marcando su
+  desviación respecto al centro; al centrarla, avisa y **bloquea**.
 - **Astrometría en el dispositivo**: identifica el campo de estrellas contra un
   catálogo embebido y **corrige el rumbo** a partir de la propia imagen,
   eliminando la dependencia del magnetómetro (que falla cerca de metal).
@@ -111,14 +112,29 @@ Detalles técnicos en [`AGENTS.md`](AGENTS.md).
 | M5 | Build EAS → APK (+ iOS opcional) | ✅ (config) |
 | M6 | Extras: opciones/registro, retícula GTi, modo noche, enfoque, escala/tolerancia | ✅ |
 
-Probado en **Expo Go**. La astrometría funciona con capturas periódicas; para
-tiempo real puro (VisionCamera) haría falta un *development build*.
+Probado en un **development build** (APK) y en el móvil: la cámara es un módulo
+nativo propio (`modules/polar-camera`), así que **ya no funciona en Expo Go**.
+La astrometría usa capturas periódicas; el tiempo real (frames continuos) es el
+siguiente paso.
 
 ## Requisitos
 
 - Node.js LTS y npm.
-- La app **Expo Go** en el móvil para desarrollo.
+- El móvil por **USB** (con `adb`) o un *development build* ya instalado.
+  **Expo Go ya no sirve**: la cámara es un módulo nativo propio.
 - Cuenta gratuita de **Expo** (solo para compilar con EAS).
+
+Para **compilar en local** (o tocar código nativo) hacen falta además:
+
+- **JDK 17** (Temurin; es el que esperan React Native 0.86, AGP 8.x y la propia
+  imagen de EAS, así que local y nube coinciden).
+- **Android SDK**: `cmdline-tools`, `platform-tools`, plataforma **android-36**,
+  **build-tools 36.0.0**, **NDK 27.1.12297006** y **cmake 3.22.1**.
+- Ni Android Studio ni emulador: el móvil por USB (con `adb`) es el dispositivo de
+  pruebas.
+
+Esas versiones no son una elección libre: salen de
+`node_modules/react-native/gradle/libs.versions.toml` (RN 0.86.3).
 
 ## Desarrollo
 
@@ -126,12 +142,11 @@ tiempo real puro (VisionCamera) haría falta un *development build*.
 git clone https://github.com/imigueldiaz/polar-locate.git
 cd polar-locate
 npm install
-npx expo start
+npm run android   # compila el APK de debug y lo instala en el móvil
 ```
 
-Abre el terminal de VS Code (Ctrl+\`), ejecuta lo anterior y **escanea el QR
-desde dentro de Expo Go** (no con la cámara del sistema). Necesitarás conceder
-permisos de **ubicación** y **cámara**.
+Abre el terminal de VS Code (Ctrl+\`), ejecuta lo anterior y **abre la app ya instalada** (no Expo Go) con `npx expo start` para cambios
+solo de JS. Necesitarás conceder permisos de **ubicación** y **cámara**.
 
 Comprobaciones:
 
@@ -155,6 +170,27 @@ npx eas-cli@latest build -p android --profile preview
 El perfil `preview` genera un **APK** instalable (distribución interna) y te da
 un enlace de descarga. `production` genera el build de tienda con incremento de
 versión automático.
+
+### Compilar en local (sin EAS)
+
+Con el JDK y el Android SDK instalados (ver [Requisitos](#requisitos)) puedes
+compilar sin nube. Es lo práctico cuando se toca **código nativo**, porque el
+primer build tarda ~8 min y los siguientes son incrementales:
+
+```bash
+cd android
+export JAVA_HOME="C:/Users/imigu/AppData/Local/jdk/jdk-17.0.20.1+1"   # tu ruta
+export ANDROID_HOME="C:/Users/imigu/AppData/Local/Android/Sdk"        # tu ruta
+cmd //c gradlew.bat :app:assembleDebug --console=plain
+```
+
+El APK queda en `android/app/build/outputs/apk/debug/app-debug.apk`. Para
+compilar **e instalar** en un móvil conectado por USB: `npm run android`
+(`expo run:android`).
+
+`android/` e `ios/` son **generados** (`npx expo prebuild`): no se editan a mano
+ni se suben al repo. Los ajustes nativos van en `app.json`, en un *config plugin*
+o en un módulo propio bajo `modules/`.
 
 ### Releases automáticas (GitHub)
 
