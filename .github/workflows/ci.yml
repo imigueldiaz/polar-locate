@@ -31,3 +31,32 @@ jobs:
         run: npm test
       - name: Expo Doctor
         run: npx expo-doctor
+
+  # The native module under modules/ is only compiled here and by the EAS release build,
+  # so a Kotlin/CameraX regression would otherwise reach a tag unnoticed.
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK packages
+        run: yes | sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+      - run: npm ci
+      - name: Generate android/ (CNG) and autolink modules/
+        run: npx expo prebuild -p android --no-install
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+        working-directory: android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk

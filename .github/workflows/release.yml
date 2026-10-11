@@ -43,10 +43,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           gh release create "$TAG" polar-locate.apk --title "$TAG" --generate-notes
-          # El QR apunta al artefacto de EAS: su CDN soporta reanudar (Accept-Ranges) y no se atasca en movil como el de GitHub.
-          # ponytail: si el artefacto de EAS caduca, queda el asset de GitHub como descarga.
+          # El QR apunta al asset de GitHub: no caduca (el artefacto de EAS sí) y se descarga desde el movil.
           EAS_URL=$(jq -r '.[0].artifacts.buildUrl // .[0].artifacts.applicationArchiveUrl' build.json)
           APK_URL="https://github.com/$REPO/releases/download/$TAG/polar-locate.apk"
-          QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=$EAS_URL"
+          QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=$APK_URL"
           BODY=$(gh release view "$TAG" --json body -q .body)
-          gh release edit "$TAG" --notes "$(printf '%s\n\n### Descarga del APK (escanea el QR)\n\n[![QR de descarga](%s)](%s)\n\n- EAS (recomendado en movil): %s\n- GitHub: %s\n' "$BODY" "$QR_URL" "$EAS_URL" "$EAS_URL" "$APK_URL")"
+          gh release edit "$TAG" --notes "$(printf '%s\n\n### Descarga del APK (escanea el QR)\n\n[![QR de descarga](%s)](%s)\n\n- GitHub (recomendado): %s\n- EAS (caduca): %s\n' "$BODY" "$QR_URL" "$APK_URL" "$APK_URL" "$EAS_URL")"
