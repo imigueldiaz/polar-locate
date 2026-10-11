@@ -134,7 +134,8 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
   return (
     <View style={styles.overlay}>
       <View style={styles.panel}>
-        <Text style={styles.title}>{t('options.title')}</Text>
+        <ScrollView contentContainerStyle={styles.panelBody} showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>{t('options.title')}</Text>
         <Toggle
           label={t('options.saveJpegs')}
           value={prefs.saveJpegs}
@@ -248,6 +249,7 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
             <Text style={styles.btnText}>{t('options.close')}</Text>
           </Pressable>
         </View>
+        </ScrollView>
       </View>
     </View>
   );
@@ -269,9 +271,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: theme.colors.line,
-    padding: theme.space(2),
+    // Scrolls instead of overflowing: the panel has outgrown the screen.
+    maxHeight: '92%',
     width: '86%',
-    gap: theme.space(1),
+  },
+  panelBody: {
+    padding: theme.space(1.5),
+    gap: theme.space(0.5),
   },
   title: {
     color: theme.colors.redBright,
@@ -279,31 +285,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 2,
-    marginBottom: theme.space(0.5),
+    marginBottom: theme.space(0.25),
   },
   section: {
     color: theme.colors.redDim,
     fontFamily: theme.mono,
     fontSize: 11,
     letterSpacing: 1,
-    marginTop: theme.space(0.5),
+    marginTop: theme.space(0.25),
   },
   picker: {
-    gap: theme.space(0.5),
+    gap: theme.space(0.25),
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: theme.space(0.5),
+    gap: theme.space(0.25),
   },
   chip: {
     borderColor: theme.colors.off,
     borderWidth: 1,
     borderRadius: 999,
-    minHeight: 44,
+    minHeight: 36,
     justifyContent: 'center',
-    paddingVertical: theme.space(1),
-    paddingHorizontal: theme.space(1.5),
+    paddingVertical: theme.space(0.5),
+    paddingHorizontal: theme.space(1),
   },
   chipOn: {
     borderColor: theme.colors.redBright,
@@ -320,7 +326,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.space(1),
+    gap: theme.space(0.5),
   },
   label: {
     color: theme.colors.text,
@@ -335,7 +341,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.line,
     borderWidth: 1,
     borderRadius: 4,
-    paddingVertical: 2,
+    paddingVertical: 1,
     paddingHorizontal: theme.space(1),
     minWidth: 72,
     textAlign: 'right',
@@ -344,19 +350,19 @@ const styles = StyleSheet.create({
     color: theme.colors.textDim,
     fontFamily: theme.mono,
     fontSize: 11,
-    marginTop: theme.space(0.5),
+    marginTop: theme.space(0.25),
   },
   actions: {
     flexDirection: 'row',
-    gap: theme.space(1),
-    marginTop: theme.space(1),
+    gap: theme.space(0.5),
+    marginTop: theme.space(0.5),
   },
   btn: {
     flex: 1,
     borderColor: theme.colors.redDim,
     borderWidth: 1,
     borderRadius: 999,
-    paddingVertical: theme.space(1),
+    paddingVertical: theme.space(0.5),
     alignItems: 'center',
   },
   btnText: {
