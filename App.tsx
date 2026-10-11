@@ -130,13 +130,23 @@ export default function App() {
     ladders: { iso: isoLadder, shutter: shutterLadder },
   });
 
-  // The initial measurement only fills in while both are still on auto; a manual pick wins.
+  // The meter fills the pair while both are on auto; a manual pick (metered === false) always wins.
   useEffect(() => {
     const m = starTrack.metered;
+    if (!searching) return; // only after a calibration burst has run
+    if (prefs.metered) {
+      // The pair was written by the meter itself, so it may be stale: refresh it, and drop it
+      // when this run's frames say "auto" (light frames are better served by the phone's AE).
+      if (m) update({ iso: m.iso, exposureSec: m.exposureSec, metered: true });
+      else if (prefs.iso > 0 || prefs.exposureSec > 0) {
+        update({ iso: 0, exposureSec: 0, metered: false });
+      }
+      return;
+    }
     if (m && prefs.iso <= 0 && prefs.exposureSec <= 0) {
       update({ iso: m.iso, exposureSec: m.exposureSec, metered: true });
     }
-  }, [starTrack.metered, prefs.iso, prefs.exposureSec, update]);
+  }, [starTrack.metered, searching, prefs.iso, prefs.exposureSec, prefs.metered, update]);
 
   // Sharpness of the latest stack, read by the sweep without re-rendering per frame.
   const focusRef = useRef(0);
