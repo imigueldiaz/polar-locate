@@ -148,6 +148,15 @@ export default function App() {
     }
   }, [starTrack.metered, searching, prefs.iso, prefs.exposureSec, prefs.metered, update]);
 
+  // A metered pair belongs to the session that measured it (last night's sky is stale), so a
+  // stored one is dropped on launch: the panel goes back to plain `Auto` until the next run.
+  const meterResetRef = useRef(false);
+  useEffect(() => {
+    if (meterResetRef.current) return;
+    meterResetRef.current = true;
+    if (prefs.metered) update({ iso: 0, exposureSec: 0, metered: false });
+  }, [prefs.metered, update]);
+
   // Sharpness of the latest stack, read by the sweep without re-rendering per frame.
   const focusRef = useRef(0);
   useEffect(() => {
