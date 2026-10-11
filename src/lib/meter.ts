@@ -110,9 +110,9 @@ export function initialSettings(
   shutterLadder: number[],
 ): { iso: number; exposureSec: number } | null {
   if (!isoLadder.length || !shutterLadder.length) return null;
+  // Always measure while the panel is on auto: the pair is shown behind `Auto (…)`, and the
+  // mid-ladder start (never the ladder ends) is what keeps the numbers plausible either way.
   const thirds = thirdsFor(stats, 99);
-  if (thirds <= 0) return null;
-  // Mid-ladder start, so the correction still has room to move both ways.
   const mid = (l: number[]) => l[Math.floor(l.length / 2)];
   return nextSettings(isoLadder, shutterLadder, mid(isoLadder), mid(shutterLadder), thirds, 'iso');
 }
@@ -166,14 +166,16 @@ export function selfCheck(): void {
     JSON.stringify(initialSettings(dark, iso, sh)) === JSON.stringify({ iso: 400, exposureSec: 1 / 20 }),
     'initialSettings dark frame starts mid-ladder',
   );
-  // In band or blown → stay on auto: the phone's AE is better than anything the ladders offer.
+  // In band → the mid-ladder pair unchanged; blown → one third down from it.
   console.assert(
-    initialSettings({ p99: 200, median: 10, clipped: 0 }, iso, sh) === null,
-    'initialSettings in band → auto',
+    JSON.stringify(initialSettings({ p99: 200, median: 10, clipped: 0 }, iso, sh)) ===
+      JSON.stringify({ iso: 200, exposureSec: 1 / 25 }),
+    'initialSettings in band keeps mid-ladder',
   );
   console.assert(
-    initialSettings({ p99: 255, median: 200, clipped: 1 }, iso, sh) === null,
-    'initialSettings blown → auto',
+    JSON.stringify(initialSettings({ p99: 255, median: 200, clipped: 1 }, iso, sh)) ===
+      JSON.stringify({ iso: 100, exposureSec: 1 / 25 }),
+    'initialSettings blown steps down',
   );
   console.assert(initialSettings(dark, [], sh) === null, 'initialSettings without ladders');
 
