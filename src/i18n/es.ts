@@ -29,6 +29,8 @@ export default {
     capture: 'Captura',
     drift: 'Deriva Polar',
     visibleFrom: 'Visible desde',
+    sky: 'Cielo',
+    bortle: 'Bortle',
   },
   guide: {
     move: 'Mueve el soporte',

@@ -10,6 +10,7 @@ import * as Brightness from 'expo-brightness';
 
 import { OptionsPanel } from './src/components/OptionsPanel';
 import { Histogram } from './src/components/Histogram';
+import { fetchSky } from './src/lib/radiance';
 import { Reticle, type Offset } from './src/components/Reticle';
 import { usePointing } from './src/hooks/usePointing';
 import { usePrefs } from './src/hooks/usePrefs';
@@ -181,6 +182,44 @@ export default function App() {
     prefs.infinityFocus,
     update,
   ]);
+
+  // Sky brightness from the radiance API: cached, and only re-queried after moving >1 km or
+  // once a month. Outside Spain (or offline) the row simply stays empty.
+  useEffect(() => {
+    if (!coords) return;
+    const sky = prefs.sky;
+    const movedKm = sky
+      ? Math.hypot(
+          (coords.lat - sky.lat) * 111,
+          (coords.lon - sky.lon) * 111 * Math.cos(coords.lat * D2R),
+        )
+      : Infinity;
+    const stale = !sky || Date.now() - sky.at > 30 * 24 * 3600 * 1000;
+    if (!stale && movedKm < 1) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const info = await fetchSky(coords.lon, coords.lat);
+        if (alive && info) {
+          update({
+            sky: {
+              lat: coords.lat,
+              lon: coords.lon,
+              bortle: info.bortle,
+              bortleClass: info.bortleClass,
+              sqm: info.sqm,
+              at: Date.now(),
+            },
+          });
+        }
+      } catch {
+        // offline, rate limited or outside coverage: keep whatever we had
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [coords, prefs.sky, update]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -555,6 +594,14 @@ export default function App() {
         <Row
           label={t('readout.visibleFrom')}
           value={dark?.from ? formatClock(dark.from) : dash}
+        />
+        <Row
+          label={t('readout.sky')}
+          value={
+            prefs.sky
+              ? `${t('readout.bortle')} ${prefs.sky.bortleClass} · ${prefs.sky.sqm.toFixed(1)}`
+              : dash
+          }
         />
       </View>
 

@@ -1,5 +1,16 @@
 import { File, Paths } from 'expo-file-system';
 
+/** Last sky-brightness reading (radiance API) with where and when it was taken. */
+export type SkyCache = {
+  lat: number;
+  lon: number;
+  bortle: number;
+  bortleClass: number;
+  sqm: number;
+  /** Epoch ms of the reading. */
+  at: number;
+};
+
 export type Prefs = {
   saveJpegs: boolean;
   saveTraces: boolean;
@@ -16,6 +27,7 @@ export type Prefs = {
   pxPerDeg: number;
   tolDeg: number;
   calibFrames: number;
+  sky: SkyCache | null;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -32,6 +44,7 @@ export const DEFAULT_PREFS: Prefs = {
   pxPerDeg: 0,
   tolDeg: 0.5,
   calibFrames: 10,
+  sky: null,
 };
 
 export function loadPrefs(): Prefs {

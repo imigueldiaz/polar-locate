@@ -99,10 +99,10 @@ export function nextSettings(
 }
 
 /**
- * One-shot measurement for the initial calibration: from the frames' brightness, start at the
- * fastest shutter and the lowest ISO and climb ISO first, so the result keeps the exposure short
- * (a long exposure smears the star the CV is trying to centre). `null` when the camera gave no
- * ladders. The ladders clamp the result, so no resolution is lost to a jump bound.
+ * One-shot measurement for the initial calibration. Only a **dark** frame gets manual values: with
+ * the stars already at target, or with the frame blown, the phone's own auto exposure beats any pair
+ * the ladders can offer — and starting from the ladder ends is what produced the silly
+ * `ISO 12 + 1/8000` pairs on bright scenes. `null` means "leave it to auto".
  */
 export function initialSettings(
   stats: FrameStats,
@@ -110,7 +110,11 @@ export function initialSettings(
   shutterLadder: number[],
 ): { iso: number; exposureSec: number } | null {
   if (!isoLadder.length || !shutterLadder.length) return null;
-  return nextSettings(isoLadder, shutterLadder, isoLadder[0], shutterLadder[0], thirdsFor(stats, 99), 'iso');
+  const thirds = thirdsFor(stats, 99);
+  if (thirds <= 0) return null;
+  // Mid-ladder start, so the correction still has room to move both ways.
+  const mid = (l: number[]) => l[Math.floor(l.length / 2)];
+  return nextSettings(isoLadder, shutterLadder, mid(isoLadder), mid(shutterLadder), thirds, 'iso');
 }
 
 /** Assert-based self-check; run by `npm test` (scripts/selfcheck.mjs). */
@@ -159,8 +163,17 @@ export function selfCheck(): void {
 
   const dark = { p99: 100, median: 10, clipped: 0 };
   console.assert(
-    JSON.stringify(initialSettings(dark, iso, sh)) === JSON.stringify({ iso: 400, exposureSec: 1 / 25 }),
-    'initialSettings climbs ISO first',
+    JSON.stringify(initialSettings(dark, iso, sh)) === JSON.stringify({ iso: 400, exposureSec: 1 / 20 }),
+    'initialSettings dark frame starts mid-ladder',
+  );
+  // In band or blown → stay on auto: the phone's AE is better than anything the ladders offer.
+  console.assert(
+    initialSettings({ p99: 200, median: 10, clipped: 0 }, iso, sh) === null,
+    'initialSettings in band → auto',
+  );
+  console.assert(
+    initialSettings({ p99: 255, median: 200, clipped: 1 }, iso, sh) === null,
+    'initialSettings blown → auto',
   );
   console.assert(initialSettings(dark, [], sh) === null, 'initialSettings without ladders');
 
