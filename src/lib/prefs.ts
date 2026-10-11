@@ -9,6 +9,8 @@ export type Prefs = {
   infinityFocus: boolean;
   iso: number;
   exposureSec: number;
+  /** True when iso/exposureSec came from the initial metering (shown as `Auto (n)`). */
+  metered: boolean;
   pxPerDeg: number;
   tolDeg: number;
   calibFrames: number;
@@ -23,6 +25,7 @@ export const DEFAULT_PREFS: Prefs = {
   infinityFocus: false,
   iso: 0,
   exposureSec: 0,
+  metered: false,
   pxPerDeg: 0,
   tolDeg: 0.5,
   calibFrames: 10,

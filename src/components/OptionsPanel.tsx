@@ -182,7 +182,7 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
           values={isoStops(lens?.isoRange[0] ?? 0, lens?.isoRange[1] ?? 0)}
           value={prefs.iso}
           format={String}
-          onChange={(v) => onChange({ iso: v })}
+          onChange={(v) => onChange({ iso: v, metered: false })}
         />
         <StopPicker
           label={t('options.exposureSec')}
@@ -192,9 +192,16 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
           )}
           value={prefs.exposureSec}
           format={formatShutter}
-          onChange={(v) => onChange({ exposureSec: v })}
+          onChange={(v) => onChange({ exposureSec: v, metered: false })}
         />
         <Text style={styles.hint}>{t('options.manualHint')}</Text>
+        <View style={styles.chips}>
+          <Chip
+            label={t('options.remeasure')}
+            on={false}
+            onPress={() => onChange({ iso: 0, exposureSec: 0, metered: false })}
+          />
+        </View>
         <NumberField
           label={t('options.pxPerDeg')}
           value={prefs.pxPerDeg}

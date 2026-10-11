@@ -5,6 +5,7 @@ import { toByteArray } from 'base64-js';
 import { PolarCamera, type GrayFrame } from '../../modules/polar-camera';
 import { brightestBlobs, laplacianVariance, stackFrames } from '../lib/detect';
 import { saveFrame } from '../lib/session';
+import { frameStats, initialSettings, type FrameStats } from '../lib/meter';
 
 export const DECODE_WIDTH = 240;
 const THRESHOLD = 60;
@@ -20,6 +21,8 @@ export type DetPx = { x: number; y: number };
 export type StarTrack = {
   running: boolean;
   frames: number;
+  /** Measured ISO/shutter from the calibration frames (null until the burst finishes). */
+  metered: { iso: number; exposureSec: number } | null;
   found: boolean;
   dx: number;
   dy: number;
@@ -36,6 +39,7 @@ export type StarTrack = {
 const IDLE: StarTrack = {
   running: false,
   frames: 0,
+  metered: null,
   found: false,
   dx: 0,
   dy: 0,
@@ -60,6 +64,8 @@ export function useStarTrack(
     pxPerDeg?: number;
     tolDeg?: number;
     calibFrames?: number;
+    /** Third-stop ladders of the chosen lens; when given, the calibration frames are metered. */
+    ladders?: { iso: number[]; shutter: number[] } | null;
   } = {},
 ): StarTrack {
   const [state, setState] = useState<StarTrack>(IDLE);
@@ -68,6 +74,7 @@ export function useStarTrack(
   const pxRef = useRef(0);
   const tolRef = useRef(DEFAULT_TOL_DEG);
   const calibRef = useRef(DEFAULT_CALIB);
+  const laddersRef = useRef<{ iso: number[]; shutter: number[] } | null>(options.ladders ?? null);
 
   useEffect(() => {
     captureRef.current = options.capture ?? null;
@@ -79,7 +86,8 @@ export function useStarTrack(
     tolRef.current = options.tolDeg && options.tolDeg > 0 ? options.tolDeg : DEFAULT_TOL_DEG;
     calibRef.current =
       options.calibFrames && options.calibFrames > 0 ? options.calibFrames : DEFAULT_CALIB;
-  }, [options.saveFrames, options.pxPerDeg, options.tolDeg, options.calibFrames]);
+    laddersRef.current = options.ladders ?? null;
+  }, [options.saveFrames, options.pxPerDeg, options.tolDeg, options.calibFrames, options.ladders]);
 
   // Detection runs on the module's analysis frames: no still capture, no JPEG decode per tick.
   useEffect(() => {
@@ -90,6 +98,9 @@ export function useStarTrack(
     let w = 0;
     let h = 0;
     const stack: Uint8Array[] = [];
+    // One-shot exposure measurement over the calibration frames (see src/lib/meter.ts).
+    let metered: { iso: number; exposureSec: number } | null = null;
+    const stats: FrameStats[] = [];
 
     const fail = (e: unknown) => {
       if (!cancelled) {
@@ -116,6 +127,7 @@ export function useStarTrack(
           setState((prev) => ({
             running: true,
             frames: prev.frames,
+            metered,
             found: !!first,
             dx,
             dy,
@@ -146,11 +158,13 @@ export function useStarTrack(
         h = frame.height;
         if (firstRun) {
           stack.push(gray);
+          stats.push(frameStats(gray));
           if (!cancelled) {
             setState((s) => ({
               ...s,
               running: true,
               frames,
+              metered: null,
               calibrating: true,
               calibDone: stack.length,
               calibTotal: calibRef.current,
@@ -158,6 +172,16 @@ export function useStarTrack(
           }
           if (stack.length >= calibRef.current) {
             firstRun = false;
+            const ladders = laddersRef.current;
+            if (ladders && stats.length) {
+              const n = stats.length;
+              const avg: FrameStats = {
+                p99: stats.reduce((a, s) => a + s.p99, 0) / n,
+                median: stats.reduce((a, s) => a + s.median, 0) / n,
+                clipped: stats.reduce((a, s) => a + s.clipped, 0) / n,
+              };
+              metered = initialSettings(avg, ladders.iso, ladders.shutter);
+            }
             analyze(stack.slice());
           }
           return;

@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const dir = import.meta.dirname;
-const mods = ['pointing', 'astrometry', 'detect', 'trace', 'stops'];
+const mods = ['pointing', 'astrometry', 'detect', 'trace', 'stops', 'meter'];
 
 let failed = false;
 const orig = console.assert;

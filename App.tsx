@@ -14,7 +14,7 @@ import { usePointing } from './src/hooks/usePointing';
 import { usePrefs } from './src/hooks/usePrefs';
 import { DECODE_WIDTH, useStarTrack } from './src/hooks/useStarTrack';
 import { pxPerDegFromLens } from './src/lib/astrometry';
-import { formatShutter } from './src/lib/stops';
+import { formatShutter, isoStops, shutterStops } from './src/lib/stops';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
 import { computeSky, darkness, polarisHourAngle } from './src/lib/astro';
@@ -101,6 +101,9 @@ export default function App() {
   // Plate-scale seed from the real optics of the chosen lens (manual pref wins). The astrometry
   // fit replaces it as soon as a match succeeds, so this only settles the cold start.
   const lens = lenses.find((l) => l.id === prefs.lensId) ?? lenses.find((l) => l.facing === 'back');
+  // Third-stop ladders of that lens: the initial metering picks a pair from them.
+  const isoLadder = isoStops(lens?.isoRange[0] ?? 0, lens?.isoRange[1] ?? 0);
+  const shutterLadder = shutterStops(lens?.exposureTimeRangeNs[0] ?? 0, lens?.exposureTimeRangeNs[1] ?? 0);
   const lensPxPerDeg = pxPerDegFromLens(
     lens?.focalLengths[0] ?? 0,
     lens?.sensorWidthMm ?? 0,
@@ -122,7 +125,16 @@ export default function App() {
     pxPerDeg: pxPerDeg ?? 0,
     tolDeg: prefs.tolDeg,
     calibFrames: prefs.calibFrames,
+    ladders: { iso: isoLadder, shutter: shutterLadder },
   });
+
+  // The initial measurement only fills in while both are still on auto; a manual pick wins.
+  useEffect(() => {
+    const m = starTrack.metered;
+    if (m && prefs.iso <= 0 && prefs.exposureSec <= 0) {
+      update({ iso: m.iso, exposureSec: m.exposureSec, metered: true });
+    }
+  }, [starTrack.metered, prefs.iso, prefs.exposureSec, update]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -432,9 +444,27 @@ export default function App() {
           label={t('readout.focus')}
           value={starTrack.running ? String(Math.round(starTrack.focus)) : dash}
         />
-        <Row label={t('readout.iso')} value={prefs.iso > 0 ? String(prefs.iso) : t('options.auto')} />
+        <Row
+          label={t('readout.iso')}
+          value={
+            prefs.iso > 0
+              ? prefs.metered
+                ? `${t('options.auto')} (${prefs.iso})`
+                : String(prefs.iso)
+              : t('options.auto')
+          }
+        />
         <Row label={t('readout.frames')} value={String(starTrack.frames)} />
-        <Row label={t('readout.shutter')} value={formatShutter(prefs.exposureSec)} />
+        <Row
+          label={t('readout.shutter')}
+          value={
+            prefs.exposureSec > 0
+              ? prefs.metered
+                ? `${t('options.auto')} (${formatShutter(prefs.exposureSec)})`
+                : formatShutter(prefs.exposureSec)
+              : formatShutter(0)
+          }
+        />
         <Row label={t('camera.label')} value={lensValue} />
         <Row label={t('readout.plate')} value={plateValue} />
         {starTrack.error ? <Row label={t('readout.capture')} value={starTrack.error} /> : null}
