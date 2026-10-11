@@ -64,6 +64,11 @@ export function pxPerDegFromF35(focal35mm: number, widthPx: number): number {
   return ((widthPx * focal35mm) / 36) * D2R;
 }
 
+/** Same pinhole centre scale, from the real optics: `sensorWidthMm` is SENSOR_INFO_PHYSICAL_SIZE. */
+export function pxPerDegFromLens(focalMm: number, sensorWidthMm: number, widthPx: number): number {
+  return ((widthPx * focalMm) / sensorWidthMm) * D2R;
+}
+
 /**
  * Match detected blobs against predicted catalog stars to recover the boresight
  * correction and the true plate scale. `detected` are pixel offsets from the
@@ -238,6 +243,10 @@ export function selfCheck(): void {
 
   // pxPerDegFromF35: a ~26 mm-equiv phone lens at 240 px → ~3 px/deg.
   console.assert(near(pxPerDegFromF35(26, 240), 3.025, 0.01), 'pxPerDegFromF35');
+  // A 36 mm-wide sensor is the 35 mm reference, so both formulas must agree there.
+  console.assert(near(pxPerDegFromLens(26, 36, 240), pxPerDegFromF35(26, 240), 1e-9), 'pxPerDegFromLens');
+  // Real case: a 6.3 mm lens on a ~9.6 mm-wide phone sensor, decoded at 240 px.
+  console.assert(near(pxPerDegFromLens(6.3, 9.6, 240), 2.749, 0.001), 'pxPerDegFromLens optics');
 
   console.log('astrometry.selfCheck: ok');
 }

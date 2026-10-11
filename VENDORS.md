@@ -14,7 +14,7 @@ Licencia del proyecto: **MIT** (ver [`LICENSE`](LICENSE)).
 | Componente | Versión | Licencia | Titular / origen |
 |---|---|---|---|
 | expo | 57.0.27 | MIT | 650 Industries, Inc. (Expo) |
-| expo-camera | 57.0.6 | MIT | 650 Industries, Inc. (Expo) |
+| androidx.camera (camera-core, camera-camera2, camera-lifecycle, camera-view) | 1.6.2 | Apache-2.0 | Google LLC |
 | expo-haptics | 57.0.3 | MIT | 650 Industries, Inc. (Expo) |
 | expo-image-manipulator | 57.0.21 | MIT | 650 Industries, Inc. (Expo) |
 | expo-localization | 57.0.2 | MIT | 650 Industries, Inc. (Expo) |

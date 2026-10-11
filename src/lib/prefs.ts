@@ -5,7 +5,10 @@ export type Prefs = {
   saveTraces: boolean;
   nightMode: boolean;
   gtiReticle: boolean;
-  afLock: boolean;
+  lensId: string;
+  infinityFocus: boolean;
+  iso: number;
+  exposureSec: number;
   pxPerDeg: number;
   tolDeg: number;
   calibFrames: number;
@@ -16,7 +19,10 @@ export const DEFAULT_PREFS: Prefs = {
   saveTraces: false,
   nightMode: false,
   gtiReticle: true,
-  afLock: true,
+  lensId: '',
+  infinityFocus: false,
+  iso: 0,
+  exposureSec: 0,
   pxPerDeg: 0,
   tolDeg: 0.5,
   calibFrames: 10,

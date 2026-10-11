@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PermissionsAndroid, Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { PolarCamera, PolarCameraView, type LensInfo } from './modules/polar-camera';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
@@ -12,7 +12,9 @@ import { OptionsPanel } from './src/components/OptionsPanel';
 import { Reticle, type Offset } from './src/components/Reticle';
 import { usePointing } from './src/hooks/usePointing';
 import { usePrefs } from './src/hooks/usePrefs';
-import { useStarTrack } from './src/hooks/useStarTrack';
+import { DECODE_WIDTH, useStarTrack } from './src/hooks/useStarTrack';
+import { pxPerDegFromLens } from './src/lib/astrometry';
+import { formatShutter } from './src/lib/stops';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
 import { computeSky, darkness, polarisHourAngle } from './src/lib/astro';
@@ -36,9 +38,9 @@ const clampOffset = (o: Offset, max: number): Offset => {
   return len > max ? { x: (o.x / len) * max, y: (o.y / len) * max } : o;
 };
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, wide && styles.rowWide]}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={styles.rowValue}>{value}</Text>
     </View>
@@ -50,19 +52,74 @@ export default function App() {
   const [coords, setCoords] = useState<Coords | null>(null);
   const [perm, setPerm] = useState<Perm>('unknown');
   const [cameraOn, setCameraOn] = useState(false);
-  const [camReady, setCamReady] = useState(false);
   const [zoom, setZoom] = useState(0);
   const [searching, setSearching] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
 
   const { prefs, update } = usePrefs();
-  const [cameraPerm, requestCamera] = useCameraPermissions();
-  const camRef = useRef<CameraView>(null);
+  const [cameraPerm, setCameraPerm] = useState(false);
+  const requestCamera = useCallback(async () => {
+    const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+    const granted = res === PermissionsAndroid.RESULTS.GRANTED;
+    setCameraPerm(granted);
+    return granted;
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      setCameraPerm(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA));
+    })();
+  }, []);
   const pointing = usePointing();
-  // capture must wait for onCameraReady; calling takePictureAsync earlier never settles
-  const starTrack = useStarTrack(camRef, cameraOn && !!cameraPerm?.granted && camReady, {
+  // the native module resolves a JPEG path; `enabled` gates the capture loop
+  const [lenses, setLenses] = useState<LensInfo[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const list = await PolarCamera.listLensesAsync();
+        if (alive) setLenses(list);
+      } catch {
+        if (alive) setLenses([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Manual settings are pushed whenever they change; the module applies them live when bound.
+  useEffect(() => {
+    if (!cameraOn || !cameraPerm) return;
+    void PolarCamera.setManualAsync({
+      iso: prefs.iso,
+      exposureSec: prefs.exposureSec,
+      infinityFocus: prefs.infinityFocus,
+    }).catch(() => undefined);
+  }, [cameraOn, cameraPerm, prefs.iso, prefs.exposureSec, prefs.infinityFocus]);
+
+  // Plate-scale seed from the real optics of the chosen lens (manual pref wins). The astrometry
+  // fit replaces it as soon as a match succeeds, so this only settles the cold start.
+  const lens = lenses.find((l) => l.id === prefs.lensId) ?? lenses.find((l) => l.facing === 'back');
+  const lensPxPerDeg = pxPerDegFromLens(
+    lens?.focalLengths[0] ?? 0,
+    lens?.sensorWidthMm ?? 0,
+    DECODE_WIDTH,
+  );
+  // Zoom narrows the field, so the capture scale grows with the CameraX zoom ratio.
+  const pxPerDeg =
+    prefs.pxPerDeg > 0
+      ? prefs.pxPerDeg
+      : Number.isFinite(lensPxPerDeg) && lensPxPerDeg > 0
+        ? lensPxPerDeg * (1 + zoom * 7)
+        : null;
+
+  const capture = useCallback(() => PolarCamera.takePictureAsync(), []);
+
+  const starTrack = useStarTrack(searching && cameraOn && cameraPerm, {
+    capture,
     saveFrames: prefs.saveJpegs,
-    pxPerDeg: prefs.pxPerDeg,
+    pxPerDeg: pxPerDeg ?? 0,
     tolDeg: prefs.tolDeg,
     calibFrames: prefs.calibFrames,
   });
@@ -94,13 +151,9 @@ export default function App() {
   const toggleCamera = useCallback(async () => {
     if (cameraOn) {
       setCameraOn(false);
-      setCamReady(false);
       return;
     }
-    if (!cameraPerm?.granted) {
-      const res = await requestCamera();
-      if (!res.granted) return;
-    }
+    if (!cameraPerm && !(await requestCamera())) return;
     setCameraOn(true);
   }, [cameraOn, cameraPerm, requestCamera]);
 
@@ -123,13 +176,13 @@ export default function App() {
 
   const att = pointing.attitude;
   const astro = useAstrometry({
-    enabled: searching && cameraOn && !!cameraPerm?.granted,
+    enabled: searching && cameraOn && cameraPerm,
     blobs: starTrack.blobs,
     att,
     lat: coords?.lat ?? null,
     lstHours: sky?.lstHours ?? null,
     date: now,
-    pxPerDeg0: starTrack.platePxPerDeg,
+    pxPerDeg0: pxPerDeg,
   });
   const attUse = astro.correctedAtt ?? att;
   const poleAlt = sky ? sky.poleAlt : null;
@@ -302,6 +355,16 @@ export default function App() {
   const hourAngle = sky ? polarisHourAngle(sky.lstHours) : null;
 
   const dash = t('common.none');
+  // Manual camera state at a glance; the full controls live in Opciones.
+  const lensValue = prefs.lensId
+    ? `${lens?.focalLengths[0]?.toFixed(1) ?? '?'} mm${lens?.isLogical ? ' · multi' : ''}`
+    : t('options.lensAuto');
+  // No `~` means the astrometry fit measured it; `~` is still the geometric seed.
+  const plateValue = astro.fix
+    ? `${astro.fix.pxPerDeg.toFixed(1)}/°`
+    : pxPerDeg
+      ? `~${pxPerDeg.toFixed(1)}/°`
+      : dash;
 
   return (
     <View style={styles.root}>
@@ -311,24 +374,21 @@ export default function App() {
         <Text style={styles.optionsBtnText}>{t('options.title')}</Text>
       </Pressable>
 
-      {cameraOn && cameraPerm?.granted && (
+      {cameraOn && cameraPerm && (
         <View style={styles.cameraWrap} pointerEvents="none">
-          <CameraView
-            ref={camRef}
+          <PolarCameraView
             style={styles.camera}
-            facing="back"
-            zoom={zoom}
-            autofocus={prefs.afLock ? 'on' : 'off'}
-            active
-            onCameraReady={() => setCamReady(true)}
+            isActive
+            lensId={prefs.lensId || null}
+            zoom={1 + zoom * 7}
           />
           <View style={styles.cameraDim} />
         </View>
       )}
 
-      <View style={styles.readout}>
+      <View style={[styles.readout, cameraOn && styles.readoutClear]}>
         <Text style={styles.title}>{t('app.title')}</Text>
-        <Row label={t('readout.coords')} value={formatLatLon(coords?.lat, coords?.lon)} />
+        <Row label={t('readout.coords')} value={formatLatLon(coords?.lat, coords?.lon)} wide />
         <Row
           label={t('readout.accuracy')}
           value={coords ? `±${coords.acc.toFixed(0)} m` : dash}
@@ -372,6 +432,11 @@ export default function App() {
           label={t('readout.focus')}
           value={starTrack.running ? String(Math.round(starTrack.focus)) : dash}
         />
+        <Row label={t('readout.iso')} value={prefs.iso > 0 ? String(prefs.iso) : t('options.auto')} />
+        <Row label={t('readout.frames')} value={String(starTrack.frames)} />
+        <Row label={t('readout.shutter')} value={formatShutter(prefs.exposureSec)} />
+        <Row label={t('camera.label')} value={lensValue} />
+        <Row label={t('readout.plate')} value={plateValue} />
         {starTrack.error ? <Row label={t('readout.capture')} value={starTrack.error} /> : null}
         <Row
           label={t('readout.astro')}
@@ -432,7 +497,7 @@ export default function App() {
             >
               <Text style={styles.zoomBtnText}>−</Text>
             </Pressable>
-            <Text style={styles.zoomVal}>{Math.round(zoom * 100)}%</Text>
+            <Text style={styles.zoomVal}>{`x${(1 + zoom * 7).toFixed(1)}`}</Text>
             <Pressable
               style={styles.zoomBtn}
               onPress={() => setZoom((z) => Math.min(1, +(z + 0.05).toFixed(2)))}
@@ -462,6 +527,7 @@ export default function App() {
       <OptionsPanel
         visible={optsOpen}
         prefs={prefs}
+        lenses={lenses}
         onChange={update}
         onShare={shareTraces}
         onClose={() => setOptsOpen(false)}
@@ -479,13 +545,20 @@ const styles = StyleSheet.create({
   },
   readout: {
     alignSelf: 'flex-start',
+    width: '70%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     backgroundColor: theme.colors.panel,
     borderRadius: 6,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.line,
     paddingVertical: theme.space(1),
-    paddingHorizontal: theme.space(1.5),
-    minWidth: 250,
+    paddingHorizontal: theme.space(1),
+  },
+  // Same fill as `panel`, but see-through so the live camera image shows behind it.
+  readoutClear: {
+    backgroundColor: 'rgba(24, 0, 3, 0.35)',
   },
   optionsBtn: {
     position: 'absolute',
@@ -511,22 +584,29 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 2,
     marginBottom: theme.space(0.5),
+    width: '100%',
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: theme.space(2),
-    marginTop: 2,
+    width: '48%',
+    gap: theme.space(0.5),
+    marginTop: 1,
+  },
+  rowWide: {
+    width: '100%',
   },
   rowLabel: {
     color: theme.colors.textDim,
     fontFamily: theme.mono,
-    fontSize: 12,
+    fontSize: 10,
   },
   rowValue: {
     color: theme.colors.text,
     fontFamily: theme.mono,
-    fontSize: 12,
+    fontSize: 10,
+    flexShrink: 1,
+    textAlign: 'right',
   },
   reticle: {
     position: 'absolute',
