@@ -2,7 +2,7 @@
   "expo": {
     "name": "Polar Locate",
     "slug": "polar-locate",
-    "version": "1.0.10",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -34,14 +34,6 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Polar Locate usa tu ubicación para calcular la posición de la estrella polar."
-        }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Polar Locate usa la cámara para centrar la estrella polar.",
-          "microphonePermission": false,
-          "recordAudioAndroid": false
         }
       ],
       [
