@@ -190,7 +190,8 @@ export function useStarTrack(
 
     const sub = PolarCamera.addListener('onFrame', onFrame);
     const jpeg = setInterval(() => void saveJpeg(), JPEG_INTERVAL_MS);
-    setState((s) => ({ ...s, running: true, frames: 0 }));
+    // No setState here: the first frame publishes `running`/`frames`, and doing it in the
+    // effect body is what react-hooks/set-state-in-effect forbids.
     return () => {
       cancelled = true;
       sub.remove();
