@@ -67,6 +67,29 @@ export function computeSky(
   };
 }
 
+/** Unit vector (east, up) tangent to Polaris' orbit — the direction it is heading. */
+export function driftTangent(
+  latitude: number,
+  longitude: number,
+  date: Date,
+): { east: number; up: number } {
+  // Numérico a propósito: el signo de la tangente depende del hemisferio y de la
+  // convención de `driftPA`, y saldría mal si se deduce «a ojo».
+  const a = computeSky(latitude, longitude, date);
+  const b = computeSky(latitude, longitude, new Date(date.getTime() + 3600 * 1000));
+  const radius = (s: Sky) => {
+    const pa = deg2rad(s.driftPA);
+    return { x: s.driftDeg * Math.sin(pa), y: s.driftDeg * Math.cos(pa) };
+  };
+  const ra = radius(a);
+  const rb = radius(b);
+  const dx = rb.x - ra.x;
+  const dy = rb.y - ra.y;
+  const len = Math.hypot(dx, dy);
+  if (!Number.isFinite(len) || len === 0) return { east: 0, up: 1 };
+  return { east: dx / len, up: dy / len };
+}
+
 export type Darkness = {
   sunAlt: number;
   isDark: boolean;
@@ -109,4 +132,35 @@ export function darkness(
     from: from ? from.date : null,
     until: until ? until.date : null,
   };
+}
+
+export function selfCheck(): void {
+  const near = (a: number, b: number, eps = 1e-6): boolean => Math.abs(a - b) < eps;
+  const lat = 40.4;
+  const lon = -3.7;
+  const date = new Date('2026-01-15T22:00:00Z');
+
+  const sky = computeSky(lat, lon, date);
+  // De fecha: Polaris se acerca al polo, así que hoy (~2026) son ~0.62°, no los 0.736° de J2000.
+  console.assert(sky.driftDeg > 0.4 && sky.driftDeg < 0.9, `driftDeg = ${sky.driftDeg}`);
+
+  const t = driftTangent(lat, lon, date);
+  const norm = Math.hypot(t.east, t.up);
+  console.assert(near(norm, 1, 1e-9), `tangent norm = ${norm}`);
+
+  // La tangente es la cuerda de 1 h: perpendicular al radio en el punto MEDIO del intervalo.
+  const mid = computeSky(lat, lon, new Date(date.getTime() + 1800 * 1000));
+  const pa = deg2rad(mid.driftPA);
+  const radial = { x: Math.sin(pa), y: Math.cos(pa) };
+  const dot = t.east * radial.x + t.up * radial.y;
+  // Tolerancia de 1e-3: la órbita no es un círculo perfecto y el radio se aleja algo en 1 h.
+  console.assert(near(dot, 0, 1e-3), `tangent·radius = ${dot}`);
+
+  const later = driftTangent(lat, lon, new Date(date.getTime() + 6 * 3600 * 1000));
+  console.assert(
+    !near(later.east, t.east, 1e-3) || !near(later.up, t.up, 1e-3),
+    `tangent does not vary: ${t.east},${t.up} vs ${later.east},${later.up}`,
+  );
+
+  console.log('astro.selfCheck: ok');
 }

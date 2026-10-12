@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { PolarCamera, PolarCameraView, type LensInfo } from './modules/polar-camera';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
 import * as Sharing from 'expo-sharing';
 import * as KeepAwake from 'expo-keep-awake';
 import * as Brightness from 'expo-brightness';
@@ -21,7 +22,8 @@ import { formatShutter, isoStops, shutterStops } from './src/lib/stops';
 import { arcminPerMin, arrow, screwFor } from './src/lib/drift';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
-import { computeSky, darkness, polarisHourAngle } from './src/lib/astro';
+import { computeSky, darkness, driftTangent, polarisHourAngle } from './src/lib/astro';
+import { allowSpeak, phraseFor, type Words } from './src/lib/voice';
 import { formatAngle, formatClock, formatHours, formatLatLon } from './src/lib/format';
 import { errorToPole, skyToScreen } from './src/lib/pointing';
 import { appendTrace, saveFrame, traceUri } from './src/lib/session';
@@ -310,14 +312,15 @@ export default function App() {
   );
   const roll = attUse ? attUse.roll : 0;
 
-  const { poleOffset, polarisOffset } = useMemo(() => {
+  const { poleOffset, polarisOffset, orbit } = useMemo(() => {
     if (!guidance || !attUse) {
-      return { poleOffset: { x: 0, y: 0 }, polarisOffset: { x: 0, y: 0 } };
+      return { poleOffset: { x: 0, y: 0 }, polarisOffset: { x: 0, y: 0 }, orbit: null };
     }
     const east = guidance.azErr * Math.cos(attUse.alt * D2R);
     const pole = skyToScreen(east, guidance.altErr, roll, PX_PER_DEG);
     let pol = pole;
-    if (sky) {
+    let orbit: { r: number; tangent: Offset } | null = null;
+    if (sky && coords) {
       const pa = sky.driftPA * D2R;
       const d = skyToScreen(
         sky.driftDeg * Math.sin(pa),
@@ -326,22 +329,31 @@ export default function App() {
         PX_PER_DEG,
       );
       pol = { x: pole.x + d.x, y: pole.y + d.y };
+      const tt = driftTangent(coords.lat, coords.lon, now);
+      const t = skyToScreen(tt.east, tt.up, roll, 1);
+      orbit = { r: Math.hypot(d.x, d.y), tangent: { x: t.x, y: t.y } };
     }
     return {
       poleOffset: clampOffset(pole, RETICLE_R),
       polarisOffset: clampOffset(pol, RETICLE_R),
+      orbit,
     };
-  }, [guidance, attUse, sky, roll]);
+  }, [guidance, attUse, sky, coords, now, roll]);
 
   const fix = useMemo(() => {
-    if (astro.fix && guidance && attUse) {
-      const right = guidance.azErr * Math.cos(attUse.alt * D2R);
+    // `up`/`right` en el marco FÍSICO del soporte: "sube" = subir la montura (gravedad),
+    // "derecha" = este. Son órdenes para mover la montura, así que NO dependen de cómo esté
+    // girado el móvil en la zapata. La flecha sí gira (ver `correction`).
+    if (!guidance || !attUse) return null;
+    const right = guidance.azErr * Math.cos(attUse.alt * D2R);
+    if (astro.fix) {
       return {
         up: guidance.altErr,
         right,
         mag: guidance.distDeg,
         cv: false,
         locked: guidance.distDeg <= TOL_DEG,
+        tol: TOL_DEG,
       };
     }
     if (cameraOn && starTrack.running && starTrack.found) {
@@ -351,23 +363,49 @@ export default function App() {
         mag: Math.hypot(starTrack.dx, starTrack.dy),
         cv: true,
         locked: starTrack.locked,
+        tol: starTrack.tolFrac,
       };
     }
-    if (guidance && attUse) {
-      const right = guidance.azErr * Math.cos(attUse.alt * D2R);
-      return {
-        up: guidance.altErr,
-        right,
-        mag: guidance.distDeg,
-        cv: false,
-        locked: guidance.distDeg <= TOL_DEG,
-      };
-    }
-    return null;
+    return {
+      up: guidance.altErr,
+      right,
+      mag: guidance.distDeg,
+      cv: false,
+      locked: guidance.distDeg <= TOL_DEG,
+      tol: TOL_DEG,
+    };
   }, [astro, cameraOn, starTrack, guidance, attUse]);
 
   const alignedNow = searching && !!fix && fix.locked;
 
+  // Dos escalas: la CV entrega fracciones del radio de la retícula, los sensores grados. La
+  // tolerancia viaja dentro de `fix`, así que anillo, voz y bloqueo no pueden discrepar.
+  const tolEff = fix ? fix.tol : TOL_DEG;
+  const pxPerUnit = fix?.cv ? RETICLE_R : PX_PER_DEG;
+  const tolPx = tolEff * pxPerUnit;
+  // La flecha apunta al aro del polo en pantalla: mismo `roll` que los marcadores, así que cae
+  // exactamente sobre el aro. En la rama CV la estrella ya viene en fracciones de pantalla.
+  const correction = useMemo(() => {
+    if (!fix) return null;
+    if (fix.cv) return { x: fix.right * RETICLE_R, y: -fix.up * RETICLE_R };
+    const s = skyToScreen(fix.right, fix.up, roll, PX_PER_DEG);
+    return { x: s.x, y: s.y };
+  }, [fix, roll]);
+
+  const words: Words = useMemo(
+    () => ({
+      up: t('guide.up'),
+      down: t('guide.down'),
+      left: t('guide.left'),
+      right: t('guide.right'),
+      fast: t('guide.fast'),
+      slow: t('guide.slow'),
+      locked: t('guide.sayLocked'),
+    }),
+    [],
+  );
+
+  // Pantalla y voz comparten `phraseFor`: no pueden contradecirse.
   const guideText = useMemo(() => {
     if (!searching) return t('search.hint');
     if (starTrack.calibrating) {
@@ -375,15 +413,32 @@ export default function App() {
     }
     if (!fix) return t('guide.noSensor');
     if (fix.locked) return t('guide.aligned');
-    const tol = fix.cv ? 0.05 : TOL_DEG;
-    const parts: string[] = [];
-    if (Math.abs(fix.up) > tol) parts.push(fix.up > 0 ? t('guide.up') : t('guide.down'));
-    if (Math.abs(fix.right) > tol) {
-      parts.push(fix.right > 0 ? t('guide.right') : t('guide.left'));
-    }
     const mag = fix.cv ? `${Math.round(fix.mag * 100)}%` : formatAngle(fix.mag, 1);
-    return parts.length ? `${parts.join(' · ')}  ${mag}` : mag;
-  }, [fix, searching, starTrack.calibrating, starTrack.calibDone, starTrack.calibTotal]);
+    const p = phraseFor(
+      { up: fix.up, right: fix.right, mag: fix.mag, tol: fix.tol, locked: fix.locked },
+      words,
+    );
+    const dirWord =
+      p?.dir === 'up'
+        ? words.up
+        : p?.dir === 'down'
+          ? words.down
+          : p?.dir === 'right'
+            ? words.right
+            : p?.dir === 'left'
+              ? words.left
+              : '';
+    const rateWord = p?.rate === 'fast' ? words.fast : p?.rate === 'slow' ? words.slow : '';
+    const parts = [dirWord, rateWord].filter(Boolean).join(' · ');
+    return parts ? `${parts}  ${mag}` : mag;
+  }, [
+    fix,
+    searching,
+    starTrack.calibrating,
+    starTrack.calibDone,
+    starTrack.calibTotal,
+    words,
+  ]);
 
   const starScreen = starTrack.found
     ? { x: starTrack.dx * RETICLE_R, y: starTrack.dy * RETICLE_R }
@@ -391,17 +446,52 @@ export default function App() {
 
   const fixRef = useRef(fix);
   fixRef.current = fix;
+  const voiceRef = useRef({ lastAt: 0, lastSay: '' });
+  const lockedRef = useRef(false);
 
   useEffect(() => {
     if (!searching || starTrack.calibrating) return;
+    const speak = (say: string) => {
+      void (async () => {
+        await Speech.stop();
+        Speech.speak(say, { language: 'es', pitch: 0.9, rate: 1.0 });
+      })();
+    };
     const id = setInterval(() => {
       const f = fixRef.current;
-      if (!f || f.locked) return;
+      if (!f) return;
+      const tol = f.tol;
+      const ratio = f.mag / tol;
+
+      if (f.locked && !lockedRef.current) {
+        // Flanco a bloqueado: un aviso inequívoco, más la palabra.
+        lockedRef.current = true;
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (prefs.voice) {
+          voiceRef.current = { lastAt: Date.now(), lastSay: words.locked };
+          speak(words.locked);
+        }
+        return;
+      }
+      lockedRef.current = f.locked;
+      if (f.locked) return;
+
+      if (prefs.voice) {
+        const p = phraseFor({ up: f.up, right: f.right, mag: f.mag, tol, locked: false }, words);
+        if (p && allowSpeak(Date.now(), p.say, voiceRef.current)) {
+          voiceRef.current = { lastAt: Date.now(), lastSay: p.say };
+          speak(p.say);
+        }
+      }
+
+      const style =
+        ratio > 6
+          ? Haptics.ImpactFeedbackStyle.Heavy
+          : ratio > 2
+            ? Haptics.ImpactFeedbackStyle.Medium
+            : Haptics.ImpactFeedbackStyle.Light;
       const useV = Math.abs(f.up) >= Math.abs(f.right);
       const positive = useV ? f.up > 0 : f.right > 0;
-      const style = useV
-        ? Haptics.ImpactFeedbackStyle.Light
-        : Haptics.ImpactFeedbackStyle.Heavy;
       const count = positive ? 1 : 2;
       void (async () => {
         for (let i = 0; i < count; i++) {
@@ -410,8 +500,13 @@ export default function App() {
         }
       })();
     }, 1000);
-    return () => clearInterval(id);
-  }, [searching, starTrack.calibrating]);
+    return () => {
+      clearInterval(id);
+      lockedRef.current = false;
+      voiceRef.current = { lastAt: 0, lastSay: '' };
+      void Speech.stop();
+    };
+  }, [searching, starTrack.calibrating, prefs.voice, words]);
 
   const shareTraces = useCallback(async () => {
     try {
@@ -643,14 +738,10 @@ export default function App() {
           }
         />
         <Row
-          label={t('readout.drift')}
-          value={
-            sky
-              ? `${formatAngle(sky.driftDeg, 2)} @ ${formatAngle(sky.driftPA, 0)}`
-              : dash
-          }
+          label={t('readout.orbit')}
+          value={sky ? `${formatAngle(sky.driftDeg, 2)} · ${t('readout.orbitSpeed')}` : dash}
         />
-        <Row label={t('readout.tracking')} value={driftValue} />
+        <Row label={t('readout.imageDrift')} value={driftValue} />
         <Row
           label={t('readout.visibleFrom')}
           value={dark?.from ? formatClock(dark.from) : dash}
@@ -677,6 +768,10 @@ export default function App() {
           field={fieldStars}
           gti={prefs.gtiReticle}
           degToPx={PX_PER_DEG}
+          orbit={orbit}
+          tolPx={tolPx}
+          correction={correction}
+          labels={searching}
         />
       </View>
 
@@ -925,8 +1020,9 @@ const styles = StyleSheet.create({
   guide: {
     color: theme.colors.text,
     fontFamily: theme.mono,
-    fontSize: 13,
+    fontSize: 18,
     letterSpacing: 1,
+    textAlign: 'center',
   },
   guideAligned: {
     color: theme.colors.redBright,

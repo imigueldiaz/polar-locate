@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { Circle, G, Line, Svg, Text as SvgText } from 'react-native-svg';
+import { Circle, G, Line, Path, Svg, Text as SvgText } from 'react-native-svg';
 
+import { t } from '../i18n';
 import { theme } from '../theme';
 
 export type Offset = { x: number; y: number };
@@ -19,6 +20,14 @@ type Props = {
   field?: FieldStar[] | null;
   gti?: boolean;
   degToPx?: number;
+  /** Polaris' 24 h orbit around the pole: radius in px + unit tangent (screen axes). */
+  orbit?: { r: number; tangent: Offset } | null;
+  /** Radius of the tolerance ring in px. */
+  tolPx?: number;
+  /** Which way to move the mount, in screen px (already rolled). */
+  correction?: Offset | null;
+  /** Paint the small explanatory labels. */
+  labels?: boolean;
 };
 
 const GTI_FIELD_DEG = 4.25;
@@ -27,6 +36,16 @@ const GTI_RING_DEG = [0.7, 0.74, 0.78] as const;
 function polar(cx: number, cy: number, radius: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
   return { x: cx + radius * Math.sin(rad), y: cy - radius * Math.cos(rad) };
+}
+
+/** Triangular arrow head (closed isosceles) with its tip at (tipX, tipY) pointing along `angleDeg`. */
+function head(tipX: number, tipY: number, angleDeg: number, size: number): string {
+  const rad = (angleDeg * Math.PI) / 180;
+  const bx = tipX - Math.cos(rad) * size;
+  const by = tipY - Math.sin(rad) * size;
+  const nx = -Math.sin(rad) * (size / 2);
+  const ny = Math.cos(rad) * (size / 2);
+  return `M ${tipX} ${tipY} L ${bx + nx} ${by + ny} L ${bx - nx} ${by - ny} Z`;
 }
 
 function GtiDial({ c, degToPx, maxR }: { c: number; degToPx: number; maxR: number }) {
@@ -104,11 +123,26 @@ export function Reticle({
   field,
   gti,
   degToPx,
+  orbit,
+  tolPx,
+  correction,
+  labels,
 }: Props) {
   const c = size / 2;
   const r = size / 2 - 8;
 
   const center = useMemo(() => `${c}, ${c}`, [c]);
+
+  // The correction arrow keeps its direction and only its length is clipped to the dial.
+  const corr = useMemo(() => {
+    if (!correction || aligned) return null;
+    const len = Math.hypot(correction.x, correction.y);
+    if (!(len > 1e-6)) return null;
+    const k = Math.min(Math.max(len, 24), r - 6) / len;
+    const x = correction.x * k;
+    const y = correction.y * k;
+    return { x, y, deg: (Math.atan2(y, x) * 180) / Math.PI };
+  }, [correction, aligned, r]);
 
   return (
     <Svg width={size} height={size}>
@@ -152,6 +186,101 @@ export function Reticle({
           strokeWidth={1}
         />
       </G>
+
+      {tolPx ? (
+        <Circle
+          cx={c + pole.x}
+          cy={c + pole.y}
+          r={tolPx}
+          stroke={theme.colors.green}
+          strokeWidth={1}
+          strokeDasharray="3 3"
+          fill="none"
+        />
+      ) : null}
+
+      {orbit ? (
+        <Circle
+          cx={c + pole.x}
+          cy={c + pole.y}
+          r={orbit.r}
+          stroke={theme.colors.redDim}
+          strokeWidth={1}
+          strokeDasharray="4 4"
+          fill="none"
+        />
+      ) : null}
+
+      {orbit ? (
+        <G>
+          <Line
+            x1={c + polaris.x}
+            y1={c + polaris.y}
+            x2={c + polaris.x + orbit.tangent.x * 16}
+            y2={c + polaris.y + orbit.tangent.y * 16}
+            stroke={theme.colors.red}
+            strokeWidth={1.5}
+          />
+          <Path
+            d={head(
+              c + polaris.x + orbit.tangent.x * 16,
+              c + polaris.y + orbit.tangent.y * 16,
+              (Math.atan2(orbit.tangent.y, orbit.tangent.x) * 180) / Math.PI,
+              6,
+            )}
+            fill={theme.colors.red}
+          />
+        </G>
+      ) : null}
+
+      {corr ? (
+        <G>
+          <Line
+            x1={c}
+            y1={c}
+            x2={c + corr.x}
+            y2={c + corr.y}
+            stroke={theme.colors.redBright}
+            strokeWidth={3}
+          />
+          <Path d={head(c + corr.x, c + corr.y, corr.deg, 10)} fill={theme.colors.redBright} />
+        </G>
+      ) : null}
+
+      {labels ? (
+        <>
+          <SvgText
+            x={c + pole.x + 12}
+            y={c + pole.y + 3}
+            fill={theme.colors.redDim}
+            fontSize={9}
+            fontFamily={theme.mono}
+          >
+            {t('reticle.pole')}
+          </SvgText>
+          <SvgText
+            x={c + polaris.x + 6}
+            y={c + polaris.y - 6}
+            fill={theme.colors.redBright}
+            fontSize={9}
+            fontFamily={theme.mono}
+          >
+            {t('reticle.polaris')}
+          </SvgText>
+          {orbit ? (
+            <SvgText
+              x={c + pole.x}
+              y={c + pole.y + orbit.r + 10}
+              fill={theme.colors.redDim}
+              fontSize={9}
+              fontFamily={theme.mono}
+              textAnchor="middle"
+            >
+              {t('reticle.orbit')}
+            </SvgText>
+          ) : null}
+        </>
+      ) : null}
 
       <Circle cx={c} cy={c} r={2} fill={theme.colors.text} />
 

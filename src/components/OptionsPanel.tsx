@@ -152,6 +152,11 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
           onValueChange={(v) => onChange({ nightMode: v })}
         />
         <Toggle
+          label={t('options.voice')}
+          value={prefs.voice}
+          onValueChange={(v) => onChange({ voice: v })}
+        />
+        <Toggle
           label={t('options.gtiReticle')}
           value={prefs.gtiReticle}
           onValueChange={(v) => onChange({ gtiReticle: v })}

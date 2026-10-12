@@ -49,9 +49,16 @@ sube nada a ningún sitio.
   celeste (incluyendo precesión) y la **hora desde la que Polaris es visible**
   (ventana de oscuridad astronómica).
 - **Retículo SVG** dibujado en pantalla, que **gira con el balanceo** del
-  teléfono (roll) para mantenerse alineado con el cielo.
-- **Guía háptica**: vibraciones cortas codifican hacia dónde mover (subir/bajar
-  o girar a un lado/otro); se vuelven finas cuando estás cerca.
+  teléfono (roll) para mantenerse alineado con el cielo, con la **órbita de
+  Polaris** (su anillo de 24 h), la **flecha de la deriva** (hacia dónde se
+  mueve) y una **flecha grande de corrección** que señala hacia donde hay que
+  mover la montura.
+- **Guía háptica**: vibraciones cortas codifican hacia dónde mover y **con qué
+  prisa** (más intensas cuanto más lejos); al centrar, un aviso de éxito.
+- **Voz**: instrucciones habladas y breves («arriba, rápido», «izquierda»,
+  «para, centrado») con el motor de texto-a-voz del propio teléfono, **una cada
+  vez** (la montura tiene dos tornillos y se gira uno). Requiere un módulo nativo
+  nuevo (`expo-speech`): hay que **reconstruir el APK**, la OTA sola no basta.
 - **Cámara en vivo** superpuesta bajo el retículo, con zoom digital.
 - **Visión por computador**: los frames de análisis llegan en **tiempo real** (~5/s, en gris)
   desde el módulo nativo; se apilan y se detecta la estrella más brillante, marcando su
@@ -94,8 +101,13 @@ sube nada a ningún sitio.
    las estrellas del catálogo en el campo de visión y se casan con las
    detectadas (ICP) → se corrige azimut, altura y escala real (px/grado). La
    actitud corregida sustituye al sensor.
-5. **Guía y hápticos**: la diferencia hasta el polo genera las instrucciones en
-   pantalla y los toques de vibración (solo con la búsqueda iniciada).
+5. **Guía, voz y hápticos** (`src/lib/voice.ts`): el texto y la voz son órdenes
+   para mover la montura (subir la altitud, girar al este), así que van en el
+   marco físico (**no** giran con el balanceo del móvil: girar el teléfono en la
+   zapata no cambia hacia dónde hay que mover la montura). La **flecha grande** sí
+   se dibuja en ejes de pantalla, de modo que cae sobre el aro del polo. Se corrige
+   **un eje dominante cada vez** y la voz/háptica marcan dirección y prisa
+   («rápido»/«suave»); todo solo con la búsqueda iniciada.
 
 Detalles técnicos en [`AGENTS.md`](AGENTS.md).
 
@@ -111,6 +123,7 @@ Detalles técnicos en [`AGENTS.md`](AGENTS.md).
 | M4.5 | Catálogo + astrometría (mata el magnetómetro) | ✅ |
 | M5 | Build EAS → APK (+ iOS opcional) | ✅ (config) |
 | M6 | Extras: opciones/registro, retícula GTi, modo noche, enfoque, escala/tolerancia | ✅ |
+| M7 | Guía clara: órbita + flechas, voz TTS, háptica por distancia | ✅ |
 
 Probado en un **development build** (APK) y en el móvil: la cámara es un módulo
 nativo propio (`modules/polar-camera`), así que **ya no funciona en Expo Go**.
@@ -153,7 +166,7 @@ Comprobaciones:
 ```bash
 npm run typecheck    # tipos
 npm run lint         # lint
-npm test             # self-checks de astro y visión
+npm test             # self-checks de astro, puntería, voz y visión
 npx expo-doctor      # salud del proyecto
 ```
 
@@ -245,6 +258,8 @@ npx eas-cli@latest build -p ios --profile preview
 - **Registros opcionales.** El guardado de JPEG y trazas (menú Opciones) escribe
   solo en la carpeta privada de la app y solo si lo activas tú; nunca sale del
   dispositivo salvo que uses *Compartir*.
+- **Voz local.** Las instrucciones habladas usan el motor de texto-a-voz del
+  propio teléfono: sin red, sin grabación y sin enviar audio a ningún sitio.
 - **Permisos:** *ubicación* (para los cálculos) y *cámara* (para apuntar).
   Ninguno se usa para otro fin.
 

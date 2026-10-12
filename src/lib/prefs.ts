@@ -15,6 +15,8 @@ export type Prefs = {
   saveJpegs: boolean;
   saveTraces: boolean;
   nightMode: boolean;
+  /** Speak the correction words through the device TTS. */
+  voice: boolean;
   gtiReticle: boolean;
   lensId: string;
   infinityFocus: boolean;
@@ -38,6 +40,7 @@ export const DEFAULT_PREFS: Prefs = {
   saveJpegs: false,
   saveTraces: false,
   nightMode: false,
+  voice: true,
   gtiReticle: true,
   lensId: '',
   infinityFocus: false,

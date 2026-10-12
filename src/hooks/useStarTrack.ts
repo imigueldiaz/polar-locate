@@ -39,6 +39,8 @@ export type StarTrack = {
   dy: number;
   brightness: number;
   locked: boolean;
+  /** Tolerancia de bloqueo en las MISMAS unidades normalizadas que `dx`/`dy` (fracción del semicuadro). */
+  tolFrac: number;
   focus: number;
   calibrating: boolean;
   calibDone: number;
@@ -60,6 +62,7 @@ const IDLE: StarTrack = {
   dy: 0,
   brightness: 0,
   locked: false,
+  tolFrac: TOL,
   focus: 0,
   calibrating: false,
   calibDone: 0,
@@ -169,9 +172,10 @@ export function useStarTrack(
             : optics && optics.focalMm > 0 && optics.sensorWidthMm > 0
               ? pxPerDegFromLens(optics.focalMm, optics.sensorWidthMm, w) * zoomRef.current
               : null;
-        const offDeg = px ? Math.hypot(dx * cx, dy * cy) / px : null;
-        const locked =
-          !!first && (offDeg != null ? offDeg < tolRef.current : Math.hypot(dx, dy) < TOL);
+        // La tolerancia en las MISMAS unidades que dx/dy: los grados del prefs escalados por la
+        // escala de placa, o la fracción pelada cuando no se conocen las ópticas.
+        const tolFrac = px ? (tolRef.current * px) / cx : TOL;
+        const locked = !!first && Math.hypot(dx, dy) < tolFrac;
         if (!cancelled) {
           setState((prev) => ({
             running: true,
@@ -186,6 +190,7 @@ export function useStarTrack(
             dy,
             brightness: first ? first.brightness : 0,
             locked,
+            tolFrac,
             focus,
             calibrating: false,
             calibDone: calibRef.current,
