@@ -23,7 +23,7 @@ import { arcminPerMin, arrow, screwFor } from './src/lib/drift';
 import { useAstrometry } from './src/hooks/useAstrometry';
 import { t } from './src/i18n';
 import { computeSky, darkness, driftTangent, polarisHourAngle } from './src/lib/astro';
-import { allowSpeak, phraseFor, type Words } from './src/lib/voice';
+import { allowSpeak, decDirFrom, phraseFor, type Words } from './src/lib/voice';
 import { formatAngle, formatClock, formatHours, formatLatLon } from './src/lib/format';
 import { errorToPole, skyToScreen } from './src/lib/pointing';
 import { appendTrace, saveFrame, traceUri } from './src/lib/session';
@@ -31,6 +31,10 @@ import { theme } from './src/theme';
 
 type Coords = { lat: number; lon: number; acc: number };
 type Perm = 'unknown' | 'granted' | 'denied';
+type Calib = {
+  phase: 'arm' | 'measure' | 'done' | 'fail';
+  before?: { right: number; up: number };
+};
 
 const RETICLE = 300;
 const HIST_W = 240;
@@ -62,6 +66,7 @@ export default function App() {
   const [zoom, setZoom] = useState(0);
   const [searching, setSearching] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
+  const [calib, setCalib] = useState<Calib | null>(null);
 
   const { prefs, update } = usePrefs();
   const [cameraPerm, setCameraPerm] = useState(false);
@@ -378,6 +383,22 @@ export default function App() {
 
   const alignedNow = searching && !!fix && fix.locked;
 
+  // La dirección de DEC+ depende de la AR (y de cómo vaya sujeta la cámara), así que una
+  // calibración caduca: en ~1,5 h sidéreas el eje ya apunta a otro lado del plano tangente.
+  const lstHours = sky ? sky.lstHours : null;
+  const decDir = useMemo(() => {
+    const d = prefs.decDir;
+    if (!d || lstHours == null) return null;
+    const diff = (((d.lst - lstHours) % 24) + 24) % 24;
+    return Math.min(diff, 24 - diff) <= 1.5 ? d : null;
+  }, [prefs.decDir, lstHours]);
+  // El efecto de calibración no puede depender de `sky` (cambia cada segundo y reiniciaría
+  // sus temporizadores), así que la LST llega por ref.
+  const lstRef = useRef<number | null>(null);
+  useEffect(() => {
+    lstRef.current = lstHours;
+  }, [lstHours]);
+
   // Dos escalas: la CV entrega fracciones del radio de la retícula, los sensores grados. La
   // tolerancia viaja dentro de `fix`, así que anillo, voz y bloqueo no pueden discrepar.
   const tolEff = fix ? fix.tol : TOL_DEG;
@@ -401,22 +422,42 @@ export default function App() {
       fast: t('guide.fast'),
       slow: t('guide.slow'),
       locked: t('guide.sayLocked'),
+      speed: t('guide.speed'),
+      screw: t('guide.screw'),
+      screwAlt: t('guide.screwAlt'),
+      dec: t('guide.dec'),
     }),
     [],
   );
 
   // Pantalla y voz comparten `phraseFor`: no pueden contradecirse.
   const guideText = useMemo(() => {
+    if (calib) {
+      return calib.phase === 'arm'
+        ? t('guide.calibArm')
+        : calib.phase === 'measure'
+          ? t('guide.calibMeasuring')
+          : calib.phase === 'done'
+            ? t('guide.calibDone')
+            : t('guide.calibFail');
+    }
     if (!searching) return t('search.hint');
     if (starTrack.calibrating) {
       return `${t('search.calibrating')} (${starTrack.calibDone}/${starTrack.calibTotal})`;
     }
     if (!fix) return t('guide.noSensor');
     if (fix.locked) return t('guide.aligned');
-    const mag = fix.cv ? `${Math.round(fix.mag * 100)}%` : formatAngle(fix.mag, 1);
     const p = phraseFor(
-      { up: fix.up, right: fix.right, mag: fix.mag, tol: fix.tol, locked: fix.locked },
+      {
+        up: fix.up,
+        right: fix.right,
+        mag: fix.mag,
+        tol: fix.tol,
+        locked: fix.locked,
+        cv: fix.cv,
+      },
       words,
+      decDir,
     );
     const dirWord =
       p?.dir === 'up'
@@ -430,14 +471,26 @@ export default function App() {
               : '';
     const rateWord = p?.rate === 'fast' ? words.fast : p?.rate === 'slow' ? words.slow : '';
     const parts = [dirWord, rateWord].filter(Boolean).join(' · ');
-    return parts ? `${parts}  ${mag}` : mag;
+    const how =
+      p?.control === 'dec' && p.synscan != null
+        ? `${words.dec}, ${words.speed} ${p.synscan}`
+        : p?.control === 'screwAz'
+          ? words.screw
+          : p?.control === 'screwAlt'
+            ? words.screwAlt
+            : '';
+    const amount = p ? p.amount : fix.mag;
+    const mag = fix.cv ? `${Math.round(amount * 100)}%` : formatAngle(amount, 1);
+    return [parts, how, mag].filter(Boolean).join('  ');
   }, [
+    calib,
     fix,
     searching,
     starTrack.calibrating,
     starTrack.calibDone,
     starTrack.calibTotal,
     words,
+    decDir,
   ]);
 
   const starScreen = starTrack.found
@@ -449,8 +502,51 @@ export default function App() {
   const voiceRef = useRef({ lastAt: 0, lastSay: '' });
   const lockedRef = useRef(false);
 
+  // Calibración de una pulsación: DEC+ mueve la puntería en una dirección desconocida, así que
+  // se mide el cambio del error tras 3 s de pulsación (1,5 s de margen antes).
   useEffect(() => {
-    if (!searching || starTrack.calibrating) return;
+    if (!calib) return;
+    if (calib.phase === 'arm') {
+      const id = setTimeout(() => {
+        const f = fixRef.current;
+        if (!f) {
+          setCalib({ phase: 'fail' });
+          return;
+        }
+        setCalib({ phase: 'measure', before: { right: f.right, up: f.up } });
+      }, 1500);
+      return () => clearTimeout(id);
+    }
+    if (calib.phase === 'measure') {
+      const id = setTimeout(() => {
+        const f = fixRef.current;
+        const before = calib.before;
+        if (!f || !before) {
+          setCalib({ phase: 'fail' });
+          return;
+        }
+        const d = decDirFrom(before, { right: f.right, up: f.up });
+        if (!d) {
+          setCalib({ phase: 'fail' });
+          return;
+        }
+        update({ decDir: { ...d, lst: lstRef.current ?? 0 } });
+        setCalib({ phase: 'done' });
+      }, 3000);
+      return () => clearTimeout(id);
+    }
+    const id = setTimeout(() => setCalib(null), calib.phase === 'done' ? 2000 : 3000);
+    return () => clearTimeout(id);
+  }, [calib, update]);
+
+  const startCalib = useCallback(() => {
+    void Speech.stop();
+    setOptsOpen(false);
+    setCalib({ phase: 'arm' });
+  }, []);
+
+  useEffect(() => {
+    if (!searching || starTrack.calibrating || calib) return;
     const speak = (say: string) => {
       void (async () => {
         await Speech.stop();
@@ -477,7 +573,11 @@ export default function App() {
       if (f.locked) return;
 
       if (prefs.voice) {
-        const p = phraseFor({ up: f.up, right: f.right, mag: f.mag, tol, locked: false }, words);
+        const p = phraseFor(
+          { up: f.up, right: f.right, mag: f.mag, tol, locked: false, cv: f.cv },
+          words,
+          decDir,
+        );
         if (p && allowSpeak(Date.now(), p.say, voiceRef.current)) {
           voiceRef.current = { lastAt: Date.now(), lastSay: p.say };
           speak(p.say);
@@ -506,7 +606,7 @@ export default function App() {
       voiceRef.current = { lastAt: 0, lastSay: '' };
       void Speech.stop();
     };
-  }, [searching, starTrack.calibrating, prefs.voice, words]);
+  }, [searching, starTrack.calibrating, prefs.voice, words, decDir, calib]);
 
   const shareTraces = useCallback(async () => {
     try {
@@ -842,6 +942,7 @@ export default function App() {
         lenses={lenses}
         onChange={update}
         onShare={shareTraces}
+        onCalibDec={startCalib}
         onClose={() => setOptsOpen(false)}
       />
     </View>

@@ -1,5 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 
+import type { DecDir } from './voice';
+
 /** Last sky-brightness reading (radiance API) with where and when it was taken. */
 export type SkyCache = {
   lat: number;
@@ -34,6 +36,8 @@ export type Prefs = {
   labels: 'off' | 'few' | 'all';
   /** Save one full-quality JPEG the first time astrometry solves (comment = solution + names). */
   saveFix: boolean;
+  /** Dirección calibrada de DEC+ (unitaria) y LST de cuando se midió: caduca al cambiar la AR. */
+  decDir: (DecDir & { lst: number }) | null;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -54,13 +58,18 @@ export const DEFAULT_PREFS: Prefs = {
   sky: null,
   labels: 'few',
   saveFix: true,
+  decDir: null,
 };
 
 export function loadPrefs(): Prefs {
   try {
     const file = new File(Paths.document, 'prefs.json');
     if (!file.exists) return DEFAULT_PREFS;
-    return { ...DEFAULT_PREFS, ...(JSON.parse(file.textSync()) as Partial<Prefs>) };
+    const p = { ...DEFAULT_PREFS, ...(JSON.parse(file.textSync()) as Partial<Prefs>) };
+    const d = p.decDir;
+    // Un fichero viejo o a medio escribir deja `decDir` sin números: se ignora la calibración.
+    if (d && ![d.right, d.up, d.lst].every(Number.isFinite)) p.decDir = null;
+    return p;
   } catch {
     return DEFAULT_PREFS;
   }

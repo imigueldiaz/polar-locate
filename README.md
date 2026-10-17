@@ -55,10 +55,24 @@ sube nada a ningún sitio.
   mover la montura.
 - **Guía háptica**: vibraciones cortas codifican hacia dónde mover y **con qué
   prisa** (más intensas cuanto más lejos); al centrar, un aviso de éxito.
-- **Voz**: instrucciones habladas y breves («arriba, rápido», «izquierda»,
-  «para, centrado») con el motor de texto-a-voz del propio teléfono, **una cada
-  vez** (la montura tiene dos tornillos y se gira uno). Requiere un módulo nativo
-  nuevo (`expo-speech`): hay que **reconstruir el APK**, la OTA sola no basta.
+- **Voz**: instrucciones habladas y breves («arriba, rápido, eje DEC, velocidad 6»,
+  «izquierda, tornillo de azimut», «para, centrado») con el motor de texto-a-voz
+  del propio teléfono, **una cada vez** (la montura tiene dos tornillos y se gira
+  uno). La **velocidad de SynScan** sale del error: el rate (0–9) que lo cubre en
+  ~1,2 s sin pasarse (de 0,5× sidéreo a la máxima de la montura). Con la cámara
+  apuntando al polo los botones de **AR** apenas mueven la puntería (×cos(dec) ≈ 0),
+  así que el azimut se corrige con el **tornillo de la base** y no con una velocidad.
+  **Calibración de DEC (una pulsación)**: con una réflex montada en la zapata, DEC sí
+  mueve la puntería 1:1, pero en una dirección del plano tangente que depende de la
+  AR y de cómo vaya sujeta la cámara, así que la app no puede adivinarla. En
+  **Opciones → Eje DEC → Calibrar** la app te pide pulsar DEC+ unos 3 s y mide cuánto
+  y hacia dónde cambia el error: desde entonces la voz dice **qué botón y en qué
+  sentido** («sube, rápido, eje DEC, velocidad 6»), proyecta el error sobre ese eje y,
+  cuando el error cae fuera de él, te manda al **tornillo de altitud o de azimut**.
+  La calibración caduca a las ~1,5 h de **hora sidérea** (o al cambiar la AR de la
+  montura): recalibra si te avisa que no hay calibración.
+  Requiere módulos nativos (`expo-speech` y la cámara): hay que **reconstruir el APK**,
+  la OTA sola no basta.
 - **Cámara en vivo** superpuesta bajo el retículo, con zoom digital.
 - **Visión por computador**: los frames de análisis llegan en **tiempo real** (~5/s, en gris)
   desde el módulo nativo; se apilan y se detecta la estrella más brillante, marcando su
@@ -107,7 +121,14 @@ sube nada a ningún sitio.
    zapata no cambia hacia dónde hay que mover la montura). La **flecha grande** sí
    se dibuja en ejes de pantalla, de modo que cae sobre el aro del polo. Se corrige
    **un eje dominante cada vez** y la voz/háptica marcan dirección y prisa
-   («rápido»/«suave»); todo solo con la búsqueda iniciada.
+   («rápido»/«suave»); todo solo con la búsqueda iniciada. La voz añade la
+   **velocidad de SynScan** a usar (`synscanRate()`, tabla de rates 0–9 de los
+   manuales) y, en el eje de azimut, manda al tornillo de la base porque en el polo
+   los botones de AR no lo corrigen. Con la dirección de DEC calibrada
+   (`decDirFrom()`), el error se **proyecta sobre el eje DEC** (misma dirección que
+   mueve DEC+, así que el signo del botón sale solo): la componente que ese eje
+   cubre se pide con velocidad, y la perpendicular se pide con el **tornillo de
+   altitud o de azimut** según el eje que domine.
 
 Detalles técnicos en [`AGENTS.md`](AGENTS.md).
 

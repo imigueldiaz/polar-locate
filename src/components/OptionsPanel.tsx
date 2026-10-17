@@ -13,6 +13,7 @@ type Props = {
   lenses: LensInfo[];
   onChange: (patch: Partial<Prefs>) => void;
   onShare: () => void;
+  onCalibDec: () => void;
   onClose: () => void;
 };
 
@@ -127,7 +128,7 @@ function StopPicker({
   );
 }
 
-export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClose }: Props) {
+export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onCalibDec, onClose }: Props) {
   // Range hint + stop ladder come from the chosen lens; fall back to the default back camera.
   const lens = lenses.find((l) => l.id === prefs.lensId) ?? lenses.find((l) => l.facing === 'back');
   if (!visible) return null;
@@ -156,6 +157,17 @@ export function OptionsPanel({ visible, prefs, lenses, onChange, onShare, onClos
           value={prefs.voice}
           onValueChange={(v) => onChange({ voice: v })}
         />
+        <View style={styles.row}>
+          <Text style={styles.label}>{t('options.calibDec')}</Text>
+          <Chip
+            label={t(prefs.decDir ? 'options.calibAgain' : 'options.calibRun')}
+            on={prefs.decDir != null}
+            onPress={onCalibDec}
+          />
+        </View>
+        <Text style={styles.hint}>
+          {prefs.decDir ? t('options.calibOk') : t('options.calibNone')}
+        </Text>
         <Toggle
           label={t('options.gtiReticle')}
           value={prefs.gtiReticle}
