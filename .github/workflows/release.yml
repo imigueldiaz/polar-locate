@@ -30,12 +30,16 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
-      - name: Build APK (EAS)
-        run: eas build -p android --profile preview --non-interactive --wait --json > build.json
-      - name: Download APK
-        run: |
-          URL=$(jq -r '.[0].artifacts.buildUrl // .[0].artifacts.applicationArchiveUrl' build.json)
-          curl -fL "$URL" -o polar-locate.apk
+      - name: Android NDK + cmake
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+      # --local compila en el runner: no consume la cuota de builds de la nube y firma con la
+      # misma credencial de EAS (el APK actualiza encima del instalado).
+      - name: Build APK (EAS local)
+        env:
+          EAS_LOCAL_BUILD_ARTIFACTS_DIR: artifacts
+        run: eas build -p android --profile preview --local --non-interactive
+      - name: Recoger APK
+        run: cp "$(ls artifacts/*.apk | head -n1)" polar-locate.apk
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,9 +47,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           gh release create "$TAG" polar-locate.apk --title "$TAG" --generate-notes
-          # El QR apunta al asset de GitHub: no caduca (el artefacto de EAS sí) y se descarga desde el movil.
-          EAS_URL=$(jq -r '.[0].artifacts.buildUrl // .[0].artifacts.applicationArchiveUrl' build.json)
+          # El QR apunta al asset de GitHub: no caduca y se descarga desde el movil.
           APK_URL="https://github.com/$REPO/releases/download/$TAG/polar-locate.apk"
           QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=$APK_URL"
           BODY=$(gh release view "$TAG" --json body -q .body)
-          gh release edit "$TAG" --notes "$(printf '%s\n\n### Descarga del APK (escanea el QR)\n\n[![QR de descarga](%s)](%s)\n\n- GitHub (recomendado): %s\n- EAS (caduca): %s\n' "$BODY" "$QR_URL" "$APK_URL" "$APK_URL" "$EAS_URL")"
+          gh release edit "$TAG" --notes "$(printf '%s\n\n### Descarga del APK (escanea el QR)\n\n[![QR de descarga](%s)](%s)\n\n- GitHub: %s\n' "$BODY" "$QR_URL" "$APK_URL" "$APK_URL")"

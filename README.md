@@ -172,12 +172,15 @@ npx expo-doctor      # salud del proyecto
 
 ## Compilar el APK (Android)
 
-La app se compila **en la nube con EAS**; no necesitas Android Studio ni
-compilar en local.
+La app se compila **con EAS**; no necesitas Android Studio ni compilar en local.
+En la nube consume la cuota gratuita de builds de Android; `--local` compila en
+tu máquina (o en el runner de GitHub) sin gastarla, firmando con la misma
+credencial, así que el APK actualiza encima del instalado.
 
 ```bash
 npx eas-cli@latest login
-npx eas-cli@latest build -p android --profile preview
+npx eas-cli@latest build -p android --profile preview          # en la nube
+npx eas-cli@latest build -p android --profile preview --local  # en tu máquina, sin cuota
 ```
 
 El perfil `preview` genera un **APK** instalable (distribución interna) y te da
@@ -219,8 +222,11 @@ git tag v1.0.1 && git push origin v1.0.1
 ```
 
 Expo **no** lo hace por sí solo: EAS no tiene una función de «GitHub Release»
-(publica a tiendas y aloja el APK); este workflow añade ese paso descargando el
-artefacto del build.
+(publica a tiendas y aloja el APK); este workflow añade ese paso.
+
+El build corre con `eas build --local` **en el runner**, así que no consume la
+cuota de builds de la nube; el workflow instala el NDK con `sdkmanager`. La
+`version` de `app.json` debe coincidir con el tag.
 
 ## Actualizaciones (OTA)
 
