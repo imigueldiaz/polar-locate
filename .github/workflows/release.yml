@@ -37,6 +37,9 @@ jobs:
       - name: Build APK (EAS local)
         env:
           EAS_LOCAL_BUILD_ARTIFACTS_DIR: artifacts
+          # gradle.properties del template pide solo 512 MiB de metaspace y el daemon muere
+          # con `OutOfMemoryError: Metaspace` (pasó en v1.1.4). Un -D gana a gradle.properties.
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1536m"
         run: eas build -p android --profile preview --local --non-interactive
       - name: Recoger APK
         run: cp "$(ls artifacts/*.apk | head -n1)" polar-locate.apk
